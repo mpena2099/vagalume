@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from src.baixar_curvas import resumir_curva
+from src.detectar_sinal import avaliar_sinal
 from src.periodo import comparar_periodo, medir_periodo_bls, medir_periodo_ls
 from src.selecionar_alvos import filtrar_alvos
 
@@ -62,6 +63,16 @@ def test_resumir_curva():
     assert r["n_pontos"] == TEMPO.size - 1
     assert abs(r["cadencia_min"] - 30) < 1e-6
     assert abs(r["ruido_ptp"] / 0.002 - 1) < 0.1, r
+
+
+
+def test_avaliar_sinal():
+    assert avaliar_sinal("ls", 2.3, 0.01, 1e-10, 27, 0.002) is None
+    assert avaliar_sinal("ls", 2.3, 0.01, 1e-2, 27, 0.002) == "fap"
+    assert avaliar_sinal("bls", 2.3, 0.01, 5, 27, 0.002) == "snr"
+    assert avaliar_sinal("ls", 20, 0.01, 1e-10, 27, 0.002) == "ciclos"
+    assert avaliar_sinal("ls", 1.01, 0.01, 1e-10, 27, 0.002) == "sistematico"
+    assert avaliar_sinal("bls", 2.3, 0.004, 20, 27, 0.002) == "amplitude"
 
 
 if __name__ == "__main__":

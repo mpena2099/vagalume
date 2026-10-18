@@ -7,6 +7,7 @@ sys.path.insert(0, str(ROOT))
 from src.sanity_check import run as fase1
 from src.selecionar_alvos import run as fase2
 from src.baixar_curvas import run as fase3
+from src.detectar_sinal import run as fase4
 
 
 def run_all():
@@ -14,6 +15,7 @@ def run_all():
         ("Fase 1 - Sanity check", fase1),
         ("Fase 2 - Selecionar alvos", fase2),
         ("Fase 3 - Baixar curvas", fase3),
+        ("Fase 4 - Detectar sinal", fase4),
     ]
 
     for nome, fn in fases:

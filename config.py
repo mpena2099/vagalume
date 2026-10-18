@@ -27,6 +27,20 @@ ALVO_SEMENTE = 42
 # Fase 3: downloads em paralelo no MAST
 CURVAS_WORKERS = 6
 
+# Fase 4: cortes para virar sinal
+SINAIS_WORKERS = 4
+# janelas de flatten: LS mais longa para preservar periodos de ate ~4 d
+LS_FLATTEN_D = 4.0
+BLS_FLATTEN_D = 1.5
+LS_FAP_MAX = 1e-4
+BLS_SNR_MIN = 10
+N_CICLOS_MIN = 2
+# amplitude pico a pico (LS) ou profundidade (BLS) contra o ruido ponto a ponto
+AMP_RUIDO_MIN = 3
+# orbita do TESS (13,7 d), harmonicos e ~1 d
+PERIODOS_SISTEMATICOS_D = [13.7, 6.85, 4.57, 1.0]
+SISTEMATICO_TOL_REL = 0.03
+
 # Fase 1 — sanity check targets
 SANITY_TARGETS = {
     # Shporer et al. 2019

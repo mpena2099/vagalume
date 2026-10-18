@@ -17,17 +17,19 @@ def medir_periodo_ls(tempo, fluxo) -> dict:
     fino = np.linspace(freq[i] - 2 * passo, freq[i] + 2 * passo, 2001)
     potencia_fina = ls.power(fino)
     j = int(np.argmax(potencia_fina))
+    _, a, b = ls.model_parameters(fino[j])
     return {
         "periodo_d": float(1 / fino[j]),
+        "amplitude_pp": float(2 * np.hypot(a, b)),
         "potencia": float(potencia_fina[j]),
         "fap": float(ls.false_alarm_probability(potencia_fina[j])),
     }
 
 
-def medir_periodo_bls(tempo, fluxo) -> dict:
+def medir_periodo_bls(tempo, fluxo, dy=None) -> dict:
     baseline = float(np.max(tempo) - np.min(tempo))
     duracoes = [d for d in BLS_DURACOES_D if d < PERIODO_MIN_D]
-    bls = BoxLeastSquares(tempo, fluxo)
+    bls = BoxLeastSquares(tempo, fluxo, dy=dy)
     periodos = bls.autoperiod(
         duracoes,
         minimum_period=PERIODO_MIN_D,
