@@ -5,11 +5,13 @@ ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
 from src.sanity_check import run as fase1
+from src.selecionar_alvos import run as fase2
 
 
 def run_all():
     fases = [
         ("Fase 1 - Sanity check", fase1),
+        ("Fase 2 - Selecionar alvos", fase2),
     ]
 
     for nome, fn in fases:

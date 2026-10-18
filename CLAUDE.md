@@ -1,0 +1,52 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## O que é
+
+Pipeline pessoal que procura **estrelas variáveis não catalogadas** (binárias eclipsantes, pulsantes, rotacionais) nas curvas de luz públicas do **TESS**, descarta as conhecidas e entrega candidatas para submissão ao **VSX** da AAVSO. Projeto irmão do Rastro (`~/Projetos/Rastro`), com o mesmo contrato de fases.
+
+A especificação completa está em `especificacao.md`: cortes, catálogos de cross-match, riscos, checklist do VSX.
+
+## Comandos
+
+Rodar da raiz do repositório. O venv já existe em `venv/`.
+
+```bash
+source venv/bin/activate
+export PYTHONUNBUFFERED=1
+python pipeline.py                 # fases implementadas, em sequência
+python tests/test_units.py         # testes offline (ou: python -m pytest -q tests)
+python -c "from src.sanity_check import run; run()"   # uma fase isolada
+```
+
+`lightkurve` emite um `UserWarning` sobre `oktopus` ao importar. É inofensivo; use `-W ignore` para silenciar.
+
+**Fase 1 (`sanity_check`) é o teste de aceite.** Redescobre WASP-18 b, a binária eclipsante TIC 142979644 e a binária de contato TIC 121213501, e compara o período medido com a referência (tolerância 0,1%, aceitando harmônicos 0,5x e 2x). Se falhar, `sys.exit(1)`. Use-a para validar que o MAST está respondendo.
+
+## Arquitetura
+
+Fases sequenciais que se comunicam por tabelas SQLite em `data/vagalume.db`, cada uma com `run()` que lê a tabela anterior e grava a sua com `to_sql(..., if_exists="replace")`. Estado atual: Fases 1 e 2 existem. Plano das fases em `especificacao.md` seção 3:
+
+```
+Fase 2 selecionar_alvos    → alvos
+Fase 3 baixar_curvas       → curvas
+Fase 4 detectar_sinal      → sinais
+Fase 5 cruzar_conhecidos   → sinais_fase5
+Fase 6 checar_contaminacao → candidatos
+Fase 7 triagem             → candidatos_fase7
+```
+
+**`config.py` é a fonte única de parametrização**: caminhos, `AUTORES_PREFERIDOS`, grade de período, `SANITY_TARGETS`.
+
+Módulos reaproveitáveis pelas próximas fases:
+- `src/curvas.py` `baixar_curva(tic, setor=None) -> (lc, meta)`: busca no MAST, escolhe o primeiro autor de `AUTORES_PREFERIDOS` (`QLP`, `TESS-SPOC`, `SPOC`; strings confirmadas na coluna `author`), cache em `data/curvas/<tic>_s<setor>_<autor>.fits`, máscara `quality == 0`, normaliza.
+- `src/periodo.py`: lógica pura sobre arrays numpy (testável offline). `medir_periodo_ls` (Lomb-Scargle) e `medir_periodo_bls` (BoxLeastSquares), ambos com uma grade grossa e depois um refinamento em volta do pico; sem o refinamento o erro em 27 dias de dados é ~1%. `comparar_periodo` aceita as razões 1, 0,5 e 2.
+- `src/selecionar_alvos.py` `filtrar_alvos(tic, obs, setor)`: lógica pura sobre DataFrames (testável offline). `run()` faz duas consultas ao MAST no mesmo cone (`Catalogs.query_criteria` do TIC com filtro de Tmag/contratio no servidor e `Observations.query_criteria` por `provenance_name` e `sequence_number`), cruza por `target_name` == TIC e sorteia `ALVO_MAX` com semente fixa. Cada consulta leva ~45 s. Campo padrão: setor 55, Cygnus (l=80°, b=0°), raio 1°.
+- `src/util.py` `retry(fn, servico)`: MAST e VizieR são instáveis; toda chamada de rede passa por ele.
+
+Para BLS, a curva passa antes por `lc.flatten()` com janela de ~1,5 dia. Lomb-Scargle usa a curva sem flatten.
+
+## Convenções
+
+Código, prints e nomes de tabela/coluna em português. Comentários curtos e raros. Mantenha os prints de progresso. `data/` fica fora do git; `docs/img/` é versionado (figuras do README).
