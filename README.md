@@ -2,9 +2,9 @@
 
 Pipeline pessoal de mineração de dados astronômicos que procura **estrelas variáveis ainda não catalogadas** nas curvas de luz públicas do satélite **TESS** (NASA), descarta as já conhecidas e entrega candidatas prontas para submissão ao **VSX**, o catálogo internacional de estrelas variáveis da AAVSO.
 
-![Curva de luz da binária eclipsante TIC 142979644](docs/img/curva_binaria_eclipsante.png)
+![Ilustração artística de uma binária eclipsante](docs/img/eso1311a.jpg)
 
-*Binária eclipsante TIC 142979644, período de 4,179 dias. Em cima, o brilho ao longo de um setor do TESS: as quedas são os eclipses. Embaixo, a mesma curva dobrada no período, com os dois eclipses (primário e secundário) sobrepostos. Gerada pela Fase 1 do pipeline. Dados: NASA/TESS via MAST, produto QLP.*
+*Ilustração artística de uma binária eclipsante: duas estrelas em órbita passam uma na frente da outra, e o brilho somado cai a cada eclipse. Crédito: ESO/L. Calçada, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*
 
 ## Em palavras simples
 
@@ -13,6 +13,10 @@ Pipeline pessoal de mineração de dados astronômicos que procura **estrelas va
 **O que se procura:** estrelas que "piscam". Algumas são pares de estrelas que se eclipsam uma à outra (binárias eclipsantes). Outras pulsam, incham e encolhem. Outras giram com manchas na superfície. Em todos os casos o brilho sobe e desce num ritmo regular.
 
 **Como achar:** o TESS mede o brilho de cada estrela a cada poucos minutos, durante semanas. Esse registro se chama *curva de luz*. O software procura nela um padrão que se repete, mede o período, verifica se o objeto já é conhecido e descarta sinais falsos, como a luz de uma estrela vizinha vazando para o mesmo pixel.
+
+![Curva de luz da binária eclipsante TIC 142979644](docs/img/curva_binaria_eclipsante.png)
+
+*Binária eclipsante TIC 142979644, período de 4,179 dias. Em cima, o brilho ao longo de um setor do TESS: as quedas são os eclipses. Embaixo, a mesma curva dobrada no período, com os dois eclipses (primário e secundário) sobrepostos. Gerada pela Fase 1 do pipeline. Dados: NASA/TESS via MAST, produto QLP.*
 
 **A recompensa:** uma variável nova aceita no VSX entra no catálogo com o nome de quem a descobriu.
 
@@ -53,3 +57,7 @@ As curvas baixadas ficam em cache em `data/curvas/`.
 - Curvas de luz: missão TESS (NASA), via [MAST](https://archive.stsci.edu/), produtos [QLP](https://archive.stsci.edu/hlsp/qlp) e [TESS-SPOC](https://archive.stsci.edu/hlsp/tess-spoc).
 - Catálogos de variáveis: [VSX/AAVSO](https://vsx.aavso.org), [TESS-EBs](https://archive.stsci.edu/hlsp/tess-ebs), Gaia DR3, ZTF, ASAS-SN, via [VizieR](https://vizier.cds.unistra.fr/).
 - Projeto irmão: Rastro, caça a anãs marrons por movimento próprio no CatWISE2020.
+
+## Licença
+
+Código sob a licença [MIT](LICENSE). Imagens de terceiros mantêm a licença indicada na legenda.
