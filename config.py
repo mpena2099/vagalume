@@ -59,6 +59,15 @@ CATALOGOS_GAIA = {
     "I/358/vclassre": "Gaia-classe",
     "I/358/veb": "Gaia-EB",
 }
+# Fase 6: contaminacao e persistencia
+RAIO_VIZINHA_VARIAVEL_ARCSEC = 120
+RAIO_VIZINHA_GAIA_ARCSEC = 42
+VIZINHA_DMAG_MAX = 4
+# amplitude intrinseca que a vizinha precisaria ter; abaixo disso o blend e plausivel
+BLEND_AMP_MAX = 0.5
+PERSISTENCIA_MAX_SETORES = 2
+CONTAMINACAO_WORKERS = 4
+
 # tipos de objeto do SIMBAD que indicam variavel
 SIMBAD_VARIAVEIS = {"V*", "Pu*", "EB*", "RR*", "Ce*", "cC*", "dS*", "gD*", "BY*", "RS*",
                     "Ro*", "Mi*", "LP*", "sr*", "Ir*", "Er*", "Fl*", "El*", "a2*", "bC*",

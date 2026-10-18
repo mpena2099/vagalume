@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from src.baixar_curvas import resumir_curva
+from src.checar_contaminacao import amp_necessaria, veredito
 from src.cruzar_conhecidos import classificar
 from src.detectar_sinal import avaliar_sinal
 from src.periodo import comparar_periodo, medir_periodo_bls, medir_periodo_ls
@@ -89,6 +90,19 @@ def test_classificar():
     assert (r["status"], r["gaia_candidata"], r["gaia_classe"]) == ("conhecido_vizinho", True, "ECL")
     r = classificar([m("Gaia-EB", 1, 1.0, gaia=True)], 1.0)
     assert (r["status"], r["gaia_candidata"]) == ("novo", True)
+
+
+
+def test_amp_necessaria():
+    assert abs(amp_necessaria(0.01, 0) - 0.02) < 1e-12
+    assert abs(amp_necessaria(0.01, 2.5) - 0.11) < 1e-12
+
+
+def test_veredito():
+    assert veredito(True, True) == ("descartado", "vizinha_variavel")
+    assert veredito(False, False) == ("descartado", "nao_persiste")
+    assert veredito(False, None) == ("candidato", None)
+    assert veredito(False, True) == ("candidato", None)
 
 
 if __name__ == "__main__":

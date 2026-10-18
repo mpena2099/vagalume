@@ -62,12 +62,10 @@ def _toi() -> pd.DataFrame:
     return pd.read_csv(TOI_PATH)
 
 
-def _consultar(tic: int, ra: float, dec: float, toi: pd.DataFrame) -> list[dict]:
-    alvo = SkyCoord(ra, dec, unit="deg")
-    raio = RAIO_MATCH_ARCSEC * u.arcsec
+def _consultar_vizier(alvo: SkyCoord, raio_arcsec: float) -> list[dict]:
     catalogos = list(CATALOGOS_VIZIER) + list(CATALOGOS_GAIA)
     res = retry(lambda: Vizier(columns=["**"], row_limit=-1).query_region(
-        alvo, radius=raio, catalog=catalogos), "VizieR")
+        alvo, radius=raio_arcsec * u.arcsec, catalog=catalogos), "VizieR")
 
     matches = []
     for chave in res.keys():
@@ -87,6 +85,13 @@ def _consultar(tic: int, ra: float, dec: float, toi: pd.DataFrame) -> list[dict]
                 "periodo": float(periodo) if periodo else None,
                 "gaia": gaia, "classe": str(_valor(linha, "Class") or "") if gaia else None,
             })
+    return matches
+
+
+def _consultar(tic: int, ra: float, dec: float, toi: pd.DataFrame) -> list[dict]:
+    alvo = SkyCoord(ra, dec, unit="deg")
+    raio = RAIO_MATCH_ARCSEC * u.arcsec
+    matches = _consultar_vizier(alvo, RAIO_MATCH_ARCSEC)
 
     simbad = Simbad()
     simbad.add_votable_fields("otype")
