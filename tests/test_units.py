@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 import pandas as pd
 
+from src.baixar_curvas import resumir_curva
 from src.periodo import comparar_periodo, medir_periodo_bls, medir_periodo_ls
 from src.selecionar_alvos import filtrar_alvos
 
@@ -51,6 +52,16 @@ def test_filtrar_alvos():
     df = filtrar_alvos(tic, obs, 55)
     assert df["tic"].tolist() == [1, 5], df
     assert df["autor"].tolist() == ["QLP", "QLP"]
+
+
+
+def test_resumir_curva():
+    fluxo = 1 + RNG.normal(0, 0.002, TEMPO.size)
+    fluxo[5] = np.nan
+    r = resumir_curva(TEMPO, fluxo)
+    assert r["n_pontos"] == TEMPO.size - 1
+    assert abs(r["cadencia_min"] - 30) < 1e-6
+    assert abs(r["ruido_ptp"] / 0.002 - 1) < 0.1, r
 
 
 if __name__ == "__main__":

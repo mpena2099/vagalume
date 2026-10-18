@@ -1,3 +1,6 @@
+import re
+from pathlib import Path
+
 import lightkurve as lk
 
 from config import AUTORES_PREFERIDOS, CURVAS_DIR
@@ -15,22 +18,42 @@ def _escolher(resultado, setor):
     raise ValueError(f"nenhum autor preferido entre {sorted(set(autores))}")
 
 
-def baixar_curva(tic: int, setor: int | None = None):
-    resultado = retry(lambda: lk.search_lightcurve(f"TIC {tic}", sector=setor), "MAST")
-    if resultado is None or len(resultado) == 0:
-        raise ValueError(f"TIC {tic} sem curvas no MAST")
-    autor, setor, linha = _escolher(resultado, setor)
+def _download(linha):
+    try:
+        return linha.download()
+    except Exception as e:
+        # download interrompido deixa FITS truncado no cache do lightkurve
+        m = re.search(r"Data product (\S+\.fits)", str(e))
+        if m:
+            Path(m.group(1)).unlink(missing_ok=True)
+        raise
 
-    CURVAS_DIR.mkdir(parents=True, exist_ok=True)
-    caminho = CURVAS_DIR / f"{tic}_s{setor}_{autor}.fits"
-    if caminho.exists():
-        lc = lk.read(caminho)
+
+def _caminho(tic, setor, autor):
+    return CURVAS_DIR / f"{tic}_s{setor}_{autor}.fits"
+
+
+def baixar_curva(tic: int, setor: int | None = None, autor: str | None = None):
+    if setor is not None and autor is not None and _caminho(tic, setor, autor).exists():
+        lc = lk.read(_caminho(tic, setor, autor))
     else:
-        lc = retry(lambda: linha.download(), "MAST")
-        lc.to_fits(caminho, overwrite=True)
+        resultado = retry(lambda: lk.search_lightcurve(f"TIC {tic}", sector=setor, author=autor),
+                          "MAST")
+        if resultado is None or len(resultado) == 0:
+            raise ValueError(f"TIC {tic} sem curvas no MAST")
+        autor, setor, linha = _escolher(resultado, setor)
+
+        CURVAS_DIR.mkdir(parents=True, exist_ok=True)
+        caminho = _caminho(tic, setor, autor)
+        if caminho.exists():
+            lc = lk.read(caminho)
+        else:
+            lc = retry(lambda: _download(linha), "MAST")
+            lc.to_fits(caminho, overwrite=True)
 
     if "quality" in lc.colnames:
         lc = lc[lc.quality == 0]
     lc = lc.remove_nans().normalize()
-    meta = {"tic": tic, "autor": autor, "setor": setor, "n_pontos": len(lc)}
+    meta = {"tic": tic, "autor": autor, "setor": setor, "n_pontos": len(lc),
+            "caminho": str(_caminho(tic, setor, autor))}
     return lc, meta

@@ -26,7 +26,7 @@ python -c "from src.sanity_check import run; run()"   # uma fase isolada
 
 ## Arquitetura
 
-Fases sequenciais que se comunicam por tabelas SQLite em `data/vagalume.db`, cada uma com `run()` que lê a tabela anterior e grava a sua com `to_sql(..., if_exists="replace")`. Estado atual: Fases 1 e 2 existem. Plano das fases em `especificacao.md` seção 3:
+Fases sequenciais que se comunicam por tabelas SQLite em `data/vagalume.db`, cada uma com `run()` que lê a tabela anterior e grava a sua com `to_sql(..., if_exists="replace")`. Estado atual: Fases 1 a 3 existem. Plano das fases em `especificacao.md` seção 3:
 
 ```
 Fase 2 selecionar_alvos    → alvos
@@ -40,9 +40,10 @@ Fase 7 triagem             → candidatos_fase7
 **`config.py` é a fonte única de parametrização**: caminhos, `AUTORES_PREFERIDOS`, grade de período, `SANITY_TARGETS`.
 
 Módulos reaproveitáveis pelas próximas fases:
-- `src/curvas.py` `baixar_curva(tic, setor=None) -> (lc, meta)`: busca no MAST, escolhe o primeiro autor de `AUTORES_PREFERIDOS` (`QLP`, `TESS-SPOC`, `SPOC`; strings confirmadas na coluna `author`), cache em `data/curvas/<tic>_s<setor>_<autor>.fits`, máscara `quality == 0`, normaliza.
+- `src/curvas.py` `baixar_curva(tic, setor=None, autor=None) -> (lc, meta)`: com `setor` e `autor` e cache presente, lê direto sem consultar o MAST; senão busca no MAST, escolhe o primeiro autor de `AUTORES_PREFERIDOS` (`QLP`, `TESS-SPOC`, `SPOC`; strings confirmadas na coluna `author`), cache em `data/curvas/<tic>_s<setor>_<autor>.fits` (só `time, flux, flux_err, cadenceno, quality`; no QLP `flux` é o `sap_flux`), FITS truncado no cache do lightkurve é apagado antes do retry, máscara `quality == 0`, normaliza.
 - `src/periodo.py`: lógica pura sobre arrays numpy (testável offline). `medir_periodo_ls` (Lomb-Scargle) e `medir_periodo_bls` (BoxLeastSquares), ambos com uma grade grossa e depois um refinamento em volta do pico; sem o refinamento o erro em 27 dias de dados é ~1%. `comparar_periodo` aceita as razões 1, 0,5 e 2.
 - `src/selecionar_alvos.py` `filtrar_alvos(tic, obs, setor)`: lógica pura sobre DataFrames (testável offline). `run()` faz duas consultas ao MAST no mesmo cone (`Catalogs.query_criteria` do TIC com filtro de Tmag/contratio no servidor e `Observations.query_criteria` por `provenance_name` e `sequence_number`), cruza por `target_name` == TIC e sorteia `ALVO_MAX` com semente fixa. Cada consulta leva ~45 s. Campo padrão: setor 55, Cygnus (l=80°, b=0°), raio 1°.
+- `src/baixar_curvas.py`: baixa as curvas de `alvos` com `ProcessPoolExecutor` (`CURVAS_WORKERS`). Threads não servem: o lightkurve troca `sys.stdout` global durante o download. Grava `curvas` com `n_pontos`, `duracao_d`, `cadencia_min`, `ruido_ptp` (MAD das diferenças sucessivas, base do corte de amplitude da Fase 4), `desvio`, `status`, `erro`. Setor 55 QLP: 10 min de cadência, ~3700 pontos, ruído mediano ~2,3 ppt. Com cache, a fase roda em segundos.
 - `src/util.py` `retry(fn, servico)`: MAST e VizieR são instáveis; toda chamada de rede passa por ele.
 
 Para BLS, a curva passa antes por `lc.flatten()` com janela de ~1,5 dia. Lomb-Scargle usa a curva sem flatten.

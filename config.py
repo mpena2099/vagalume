@@ -24,6 +24,9 @@ ALVO_CONTRATIO_MAX = 0.2
 ALVO_MAX = 500
 ALVO_SEMENTE = 42
 
+# Fase 3: downloads em paralelo no MAST
+CURVAS_WORKERS = 6
+
 # Fase 1 — sanity check targets
 SANITY_TARGETS = {
     # Shporer et al. 2019
