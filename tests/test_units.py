@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from src.baixar_curvas import resumir_curva
+from src.cruzar_conhecidos import classificar
 from src.detectar_sinal import avaliar_sinal
 from src.periodo import comparar_periodo, medir_periodo_bls, medir_periodo_ls
 from src.selecionar_alvos import filtrar_alvos
@@ -73,6 +74,21 @@ def test_avaliar_sinal():
     assert avaliar_sinal("ls", 20, 0.01, 1e-10, 27, 0.002) == "ciclos"
     assert avaliar_sinal("ls", 1.01, 0.01, 1e-10, 27, 0.002) == "sistematico"
     assert avaliar_sinal("bls", 2.3, 0.004, 20, 27, 0.002) == "amplitude"
+
+
+
+def test_classificar():
+    def m(cat, dist, periodo=None, gaia=False):
+        return {"catalogo": cat, "nome": cat, "dist_arcsec": dist, "periodo": periodo,
+                "gaia": gaia, "classe": "ECL" if gaia else None}
+
+    assert classificar([], 1.0)["status"] == "novo"
+    r = classificar([m("SIMBAD", 2), m("VSX", 3, 2.0)], 1.0)
+    assert (r["status"], r["match_catalogo"], r["razao_periodo"]) == ("conhecido", "VSX", 0.5)
+    r = classificar([m("VSX", 20, 1.0), m("Gaia-EB", 1, gaia=True)], 1.0)
+    assert (r["status"], r["gaia_candidata"], r["gaia_classe"]) == ("conhecido_vizinho", True, "ECL")
+    r = classificar([m("Gaia-EB", 1, 1.0, gaia=True)], 1.0)
+    assert (r["status"], r["gaia_candidata"]) == ("novo", True)
 
 
 if __name__ == "__main__":

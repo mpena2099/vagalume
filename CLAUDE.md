@@ -26,7 +26,7 @@ python -c "from src.sanity_check import run; run()"   # uma fase isolada
 
 ## Arquitetura
 
-Fases sequenciais que se comunicam por tabelas SQLite em `data/vagalume.db`, cada uma com `run()` que lê a tabela anterior e grava a sua com `to_sql(..., if_exists="replace")`. Estado atual: Fases 1 a 4 existem. Plano das fases em `especificacao.md` seção 3:
+Fases sequenciais que se comunicam por tabelas SQLite em `data/vagalume.db`, cada uma com `run()` que lê a tabela anterior e grava a sua com `to_sql(..., if_exists="replace")`. Estado atual: Fases 1 a 5 existem. Plano das fases em `especificacao.md` seção 3:
 
 ```
 Fase 2 selecionar_alvos    → alvos
@@ -47,6 +47,9 @@ Módulos reaproveitáveis pelas próximas fases:
 - `src/util.py` `retry(fn, servico)`: MAST e VizieR são instáveis; toda chamada de rede passa por ele.
 
 - `src/detectar_sinal.py` `avaliar_sinal(...)`: cortes puros (testável offline), devolve o motivo da rejeição ou `None`. `run()` grava em `sinais` uma linha por estrela e método (`ls`, `bls`), com `sinal` e `motivo`; a Fase 5 deve ler só `sinal = 1`. `amplitude` é pico a pico no LS (2x a semi-amplitude) e profundidade no BLS. Também salva `data/figuras/fase4_sinais.png` com os 12 sinais mais fortes. ~30 min para 500 estrelas em 4 processos, quase tudo no BLS.
+- `src/cruzar_conhecidos.py` `classificar(matches, periodo_d)`: lógica pura (testável offline). `run()` faz, por estrela com sinal, uma consulta VizieR com todos os catálogos de `CATALOGOS_VIZIER` e `CATALOGOS_GAIA`, uma ao SIMBAD (só `otype` em `SIMBAD_VARIAVEIS`) e cruza com o CSV de TOIs do ExoFOP (cache em `data/toi.csv`). Distância calculada das coordenadas do catálogo, não do `_r` do VizieR. Gaia DR3 só marca `gaia_candidata`, não muda `status`. Grava `sinais_fase5`. No setor 55: 22 novas, 12 conhecidas, 6 conhecidas vizinhas de 40.
+
+Variáveis do VSX a 50" a 80" de estrelas "novo" são comuns no campo (pixel do TESS = 21"). A Fase 6 precisa buscar vizinhas variáveis além dos 30" da Fase 5 e comparar o período.
 
 Na Fase 4, LS roda sobre `lc.flatten()` com janela de 4 d (`LS_FLATTEN_D`): sem ela o pico cai nas tendências lentas do `sap_flux` (~14 d) e o FAP fica ~0 em toda estrela. BLS usa janela de 1,5 d e recebe `dy` = ruído ponto a ponto; sem `dy` o `astropy` assume erro 1 e o SNR sai ~0,02. A Fase 1 usa LS sem flatten e BLS sem `dy` (só o argmax importa lá).
 

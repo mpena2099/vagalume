@@ -1,0 +1,140 @@
+import sqlite3
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import astropy.units as u
+import numpy as np
+import pandas as pd
+from astropy.coordinates import SkyCoord
+from astroquery.simbad import Simbad
+from astroquery.vizier import Vizier
+
+from config import (CATALOGOS_GAIA, CATALOGOS_VIZIER, PERIODO_MATCH_TOL_REL, RAIO_MATCH_ARCSEC,
+                    RAIO_MESMA_ESTRELA_ARCSEC, SIMBAD_VARIAVEIS, SQLITE_PATH, TOI_PATH, TOI_URL)
+from src.periodo import comparar_periodo
+from src.util import retry
+
+COLUNAS_NOME = ["Name", "ASASSN-V", "ID", "TIC", "Source"]
+
+
+def _valor(linha, coluna):
+    if coluna is None or coluna not in linha.colnames or np.ma.is_masked(linha[coluna]):
+        return None
+    return linha[coluna]
+
+
+def classificar(matches: list[dict], periodo_d: float) -> dict:
+    """matches: dicts com catalogo, nome, dist_arcsec, periodo, gaia, classe."""
+    gaia = [m for m in matches if m["gaia"] and m["dist_arcsec"] <= RAIO_MESMA_ESTRELA_ARCSEC]
+    saida = {
+        "gaia_candidata": bool(gaia),
+        "gaia_classe": ",".join(sorted({m["classe"] for m in gaia if m.get("classe")})) or None,
+    }
+
+    conhecidos = []
+    for m in matches:
+        if m["gaia"]:
+            continue
+        razao = None
+        if m["periodo"]:
+            _, razao = comparar_periodo(periodo_d, m["periodo"], PERIODO_MATCH_TOL_REL)
+        conhecidos.append({**m, "razao": razao})
+    if not conhecidos:
+        return {**saida, "status": "novo", "match_catalogo": None, "match_nome": None,
+                "match_dist_arcsec": None, "periodo_catalogo": None, "razao_periodo": None}
+
+    # mais perto primeiro; no empate de faixa, quem tem periodo compativel
+    conhecidos.sort(key=lambda m: (m["dist_arcsec"] > RAIO_MESMA_ESTRELA_ARCSEC,
+                                   m["razao"] is None, m["dist_arcsec"]))
+    m = conhecidos[0]
+    status = "conhecido" if m["dist_arcsec"] <= RAIO_MESMA_ESTRELA_ARCSEC else "conhecido_vizinho"
+    return {**saida, "status": status, "match_catalogo": m["catalogo"], "match_nome": m["nome"],
+            "match_dist_arcsec": m["dist_arcsec"], "periodo_catalogo": m["periodo"],
+            "razao_periodo": m["razao"]}
+
+
+def _toi() -> pd.DataFrame:
+    if not TOI_PATH.exists():
+        TOI_PATH.parent.mkdir(parents=True, exist_ok=True)
+        retry(lambda: pd.read_csv(TOI_URL).to_csv(TOI_PATH, index=False), "ExoFOP")
+    return pd.read_csv(TOI_PATH)
+
+
+def _consultar(tic: int, ra: float, dec: float, toi: pd.DataFrame) -> list[dict]:
+    alvo = SkyCoord(ra, dec, unit="deg")
+    raio = RAIO_MATCH_ARCSEC * u.arcsec
+    catalogos = list(CATALOGOS_VIZIER) + list(CATALOGOS_GAIA)
+    res = retry(lambda: Vizier(columns=["**"], row_limit=-1).query_region(
+        alvo, radius=raio, catalog=catalogos), "VizieR")
+
+    matches = []
+    for chave in res.keys():
+        cat = next(c for c in catalogos if chave.startswith(c))
+        gaia = cat in CATALOGOS_GAIA
+        nome_cat, col_periodo = (CATALOGOS_GAIA[cat], None) if gaia else CATALOGOS_VIZIER[cat]
+        for linha in res[chave]:
+            ra_c = _valor(linha, "RAJ2000") if "RAJ2000" in linha.colnames else _valor(linha, "RA_ICRS")
+            dec_c = _valor(linha, "DEJ2000") if "DEJ2000" in linha.colnames else _valor(linha, "DE_ICRS")
+            periodo = _valor(linha, col_periodo)
+            if cat == "I/358/veb" and _valor(linha, "Freq"):
+                periodo = 1 / float(linha["Freq"])
+            nome = next((_valor(linha, c) for c in COLUNAS_NOME if _valor(linha, c) is not None), None)
+            matches.append({
+                "catalogo": nome_cat, "nome": str(nome),
+                "dist_arcsec": float(alvo.separation(SkyCoord(ra_c, dec_c, unit="deg")).arcsec),
+                "periodo": float(periodo) if periodo else None,
+                "gaia": gaia, "classe": str(_valor(linha, "Class") or "") if gaia else None,
+            })
+
+    simbad = Simbad()
+    simbad.add_votable_fields("otype")
+    sim = retry(lambda: simbad.query_region(alvo, radius=raio), "SIMBAD")
+    for linha in sim if sim is not None else []:
+        if str(linha["otype"]) in SIMBAD_VARIAVEIS:
+            matches.append({
+                "catalogo": "SIMBAD", "nome": f"{linha['main_id']} ({linha['otype']})",
+                "dist_arcsec": float(alvo.separation(
+                    SkyCoord(linha["ra"], linha["dec"], unit="deg")).arcsec),
+                "periodo": None, "gaia": False, "classe": None,
+            })
+
+    for _, t in toi[toi["TIC ID"] == tic].iterrows():
+        periodo = t["Period (days)"]
+        matches.append({"catalogo": "TOI", "nome": f"TOI {t['TOI']}", "dist_arcsec": 0.0,
+                        "periodo": float(periodo) if pd.notna(periodo) and periodo > 0 else None,
+                        "gaia": False, "classe": None})
+    return matches
+
+
+def run():
+    with sqlite3.connect(SQLITE_PATH) as con:
+        sinais = pd.read_sql(
+            "SELECT s.*, a.ra, a.dec, a.tmag FROM sinais s JOIN alvos a USING (tic) "
+            "WHERE s.sinal = 1", con)
+    estrelas = sinais.drop_duplicates("tic")
+    print(f"  {len(sinais)} sinais em {len(estrelas)} estrelas, raio {RAIO_MATCH_ARCSEC}\"")
+    toi = _toi()
+
+    linhas = []
+    for i, e in enumerate(estrelas.itertuples(), 1):
+        matches = _consultar(int(e.tic), e.ra, e.dec, toi)
+        for s in sinais[sinais["tic"] == e.tic].to_dict("records"):
+            linhas.append({**s, **classificar(matches, s["periodo_d"])})
+        print(f"  {i}/{len(estrelas)} TIC {e.tic}: {linhas[-1]['status']} "
+              f"{linhas[-1]['match_catalogo'] or ''} {linhas[-1]['match_nome'] or ''}")
+
+    df = pd.DataFrame(linhas)
+    por_estrela = df.sort_values("status").drop_duplicates("tic")
+    print(f"  Status por estrela: {por_estrela['status'].value_counts().to_dict()}")
+    print(f"  Match por catalogo: {por_estrela['match_catalogo'].value_counts().to_dict()}")
+    print(f"  Gaia candidata: {int(por_estrela['gaia_candidata'].sum())}")
+
+    with sqlite3.connect(SQLITE_PATH) as con:
+        df.to_sql("sinais_fase5", con, if_exists="replace", index=False)
+    print(f"  Tabela 'sinais_fase5' gravada em {SQLITE_PATH}")
+
+
+if __name__ == "__main__":
+    run()

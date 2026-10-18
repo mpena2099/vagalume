@@ -8,6 +8,7 @@ from src.sanity_check import run as fase1
 from src.selecionar_alvos import run as fase2
 from src.baixar_curvas import run as fase3
 from src.detectar_sinal import run as fase4
+from src.cruzar_conhecidos import run as fase5
 
 
 def run_all():
@@ -16,6 +17,7 @@ def run_all():
         ("Fase 2 - Selecionar alvos", fase2),
         ("Fase 3 - Baixar curvas", fase3),
         ("Fase 4 - Detectar sinal", fase4),
+        ("Fase 5 - Cruzar conhecidos", fase5),
     ]
 
     for nome, fn in fases:

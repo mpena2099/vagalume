@@ -41,6 +41,29 @@ AMP_RUIDO_MIN = 3
 PERIODOS_SISTEMATICOS_D = [13.7, 6.85, 4.57, 1.0]
 SISTEMATICO_TOL_REL = 0.03
 
+# Fase 5: cross-match com catalogos de variaveis conhecidas
+RAIO_MATCH_ARCSEC = 30
+RAIO_MESMA_ESTRELA_ARCSEC = 10
+PERIODO_MATCH_TOL_REL = 0.01
+TOI_URL = "https://exofop.ipac.caltech.edu/tess/download_toi.php?sort=toi&output=csv"
+TOI_PATH = ROOT / "data" / "toi.csv"
+# catalogo VizieR -> (nome curto, coluna de periodo ou None)
+CATALOGOS_VIZIER = {
+    "B/vsx/vsx": ("VSX", "Period"),
+    "J/ApJS/258/16": ("TESS-EBs", "Per"),
+    "J/ApJS/249/18": ("ZTF", "Per"),
+    "II/366": ("ASAS-SN", "Per"),
+}
+# Gaia DR3 nao bloqueia submissao ao VSX, so reduz o merito
+CATALOGOS_GAIA = {
+    "I/358/vclassre": "Gaia-classe",
+    "I/358/veb": "Gaia-EB",
+}
+# tipos de objeto do SIMBAD que indicam variavel
+SIMBAD_VARIAVEIS = {"V*", "Pu*", "EB*", "RR*", "Ce*", "cC*", "dS*", "gD*", "BY*", "RS*",
+                    "Ro*", "Mi*", "LP*", "sr*", "Ir*", "Er*", "Fl*", "El*", "a2*", "bC*",
+                    "sv*", "WV*", "RV*", "ZZ*", "BE*", "Or*", "CV*", "No*", "XB*"}
+
 # Fase 1 — sanity check targets
 SANITY_TARGETS = {
     # Shporer et al. 2019
