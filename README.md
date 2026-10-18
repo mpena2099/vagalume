@@ -32,13 +32,14 @@ Fases sequenciais que se comunicam por tabelas SQLite em `data/vagalume.db`. Cad
 | 4 | `detectar_sinal` | Busca periodicidade com Lomb-Scargle e BLS | `sinais` |
 | 5 | `cruzar_conhecidos` | Cruza com VSX, TESS-EBs, Gaia DR3, ZTF, ASAS-SN, TOI e SIMBAD | `sinais_fase5` |
 | 6 | `checar_contaminacao` | Descarta sinais que podem vir de estrela vizinha | `candidatos` |
-| 7 | `triagem` | Gera gráficos, nota opcional da LLM e revisão humana | `candidatos_fase7` |
+| 7 | `triagem` | Gera uma figura por candidata: curva, curva dobrada em P e 2P, periodograma, campo TESS e mapa do sinal por pixel | `candidatos_fase7` |
+| revisão | `app/revisao.py` | App local (Streamlit) para olhar cada candidata e marcar confirmar, dúvida ou descartar | `revisao_humana` |
 
 A submissão ao VSX é manual, seguindo o checklist da especificação.
 
 ## Estado
 
-Fase 1 (sanity check) implementada e passando: redescobre WASP-18 b, uma binária eclipsante destacada e uma de contato, com o período dentro de 0,1% da referência. Fases 2 a 7 ainda não implementadas. Detalhes técnicos, cortes, catálogos e riscos em [`especificacao.md`](especificacao.md).
+As sete fases estão implementadas. A Fase 1 redescobre WASP-18 b, uma binária eclipsante destacada e uma de contato, com o período dentro de 0,1% da referência. A primeira varredura, no setor 55 (Cygnus, plano da Via Láctea), processou 500 estrelas: 40 com sinal periódico, 22 sem variável catalogada a menos de 30" e 15 candidatas depois da checagem de vizinhas e da repetição em outros setores. Elas aguardam a revisão visual. Detalhes técnicos, cortes, catálogos e riscos em [`especificacao.md`](especificacao.md).
 
 ## Uso
 
@@ -48,9 +49,12 @@ pip install -r requirements.txt
 export PYTHONUNBUFFERED=1
 python pipeline.py              # roda as fases implementadas
 python tests/test_units.py      # testes offline (ou pytest)
+streamlit run app/revisao.py    # revisão visual das candidatas
 ```
 
-As curvas baixadas ficam em cache em `data/curvas/`.
+As decisões da revisão ficam na tabela `revisao_humana`, que o pipeline nunca recria.
+
+As curvas baixadas ficam em cache em `data/curvas/` e as figuras de triagem em `data/triagem/`.
 
 ## Dados e créditos
 

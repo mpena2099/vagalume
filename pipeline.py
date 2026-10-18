@@ -10,6 +10,7 @@ from src.baixar_curvas import run as fase3
 from src.detectar_sinal import run as fase4
 from src.cruzar_conhecidos import run as fase5
 from src.checar_contaminacao import run as fase6
+from src.triagem import run as fase7
 
 
 def run_all():
@@ -20,6 +21,7 @@ def run_all():
         ("Fase 4 - Detectar sinal", fase4),
         ("Fase 5 - Cruzar conhecidos", fase5),
         ("Fase 6 - Checar contaminacao", fase6),
+        ("Fase 7 - Triagem", fase7),
     ]
 
     for nome, fn in fases:

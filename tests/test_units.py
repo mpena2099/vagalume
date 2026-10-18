@@ -3,13 +3,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import sqlite3
+
 import numpy as np
 import pandas as pd
 
+from app import dados
 from src.baixar_curvas import resumir_curva
 from src.checar_contaminacao import amp_necessaria, veredito
 from src.cruzar_conhecidos import classificar
 from src.detectar_sinal import avaliar_sinal
+from src.triagem import amplitude_dobrada, profundidade_eclipse
 from src.periodo import comparar_periodo, medir_periodo_bls, medir_periodo_ls
 from src.selecionar_alvos import filtrar_alvos
 
@@ -103,6 +107,40 @@ def test_veredito():
     assert veredito(False, False) == ("descartado", "nao_persiste")
     assert veredito(False, None) == ("candidato", None)
     assert veredito(False, True) == ("candidato", None)
+
+
+
+def test_revisao_humana():
+    conn = sqlite3.connect(":memory:")
+    pd.DataFrame({"tic": [1, 2], "periodo_d": [1.0, 2.0]}).to_sql("candidatos_fase7", conn)
+    dados.salvar_revisao(conn, 1, "confirmado", "eclipse claro")
+    df = dados.carregar_candidatos(conn).set_index("tic")
+    assert df.loc[1, "decisao"] == "confirmado" and df.loc[2, "decisao"] == "pendente"
+    dados.apagar_revisao(conn, 1)
+    assert dados.carregar_candidatos(conn)["decisao"].tolist() == ["pendente", "pendente"]
+    try:
+        dados.salvar_revisao(conn, 1, "talvez")
+        assert False
+    except ValueError:
+        pass
+
+
+def test_alertas():
+    r = {"deslocamento_px": 2.0, "suspeito_blend": True, "amp_necessaria_min": 0.2,
+         "n_ciclos": 2.5, "persistente": None, "gaia_candidata": False}
+    assert len(dados.alertas(r)) == 4
+    assert dados.alertas({"deslocamento_px": 0.2, "n_ciclos": 20, "persistente": True}) == []
+
+
+
+def test_mapas_triagem():
+    fluxo = np.column_stack([np.sin(2 * np.pi * TEMPO / 2.0), np.zeros(TEMPO.size)])
+    amp = amplitude_dobrada(TEMPO, fluxo, 2.0)
+    assert abs(amp[0] - 2) < 0.05 and amp[1] == 0
+    fase = ((TEMPO - 0.5) / 3.0 + 0.5) % 1 - 0.5
+    caixa = np.column_stack([-0.1 * (np.abs(fase * 3.0) < 0.05), np.zeros(TEMPO.size)])
+    prof = profundidade_eclipse(TEMPO, caixa, 3.0, 0.5, 0.1)
+    assert abs(prof[0] - 0.1) < 1e-9 and prof[1] == 0
 
 
 if __name__ == "__main__":
