@@ -1,8 +1,8 @@
-astropy>=6.0
-astroquery>=0.4.7
-pandas>=2.0
-numpy>=1.26
-matplotlib>=3.8
-httpx>=0.27
-lightkurve>=2.4
-streamlit>=1.35
+astropy==6.1.7
+astroquery==0.4.11
+pandas==2.3.3
+numpy==2.2.6
+matplotlib==3.10.9
+httpx==0.28.1
+lightkurve==2.6.0
+streamlit==1.65.0
