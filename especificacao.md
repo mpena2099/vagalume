@@ -178,8 +178,7 @@ As figuras foram conferidas a olho e estão boas. Os erros são do modelo: uma s
 
 ## 14. Próximos passos
 
-1. Criar repositório, `config.py`, `requirements.txt`.
-2. Implementar a Fase 1 e passar.
-3. Implementar Fases 2 a 5 e rodar em 500 estrelas de um setor.
-4. Medir quantos sinais batem com catálogos (recall, como planejado no Rastro).
-5. Fases 6 e 7, revisar candidatos, submeter o primeiro.
+1. Revisar no app as 9 candidatas do setor 55 (`streamlit run app/revisao.py`).
+2. Para as confirmadas, gerar as fichas (`python src/ficha_vsx.py`) e conferir cada item do checklist da seção 11.
+3. Criar a conta na AAVSO e submeter a primeira pelo New Star Wizard.
+4. Depois da primeira aceita, varrer outros setores (mudar `ALVO_SETOR` e o campo em `config.py`).
