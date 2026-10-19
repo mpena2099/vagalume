@@ -37,14 +37,14 @@ Fase 3 baixar_curvas      → curvas          (arquivos em data/curvas/, metadad
 Fase 4 detectar_sinal     → sinais
 Fase 5 cruzar_conhecidos  → sinais_fase5    (adiciona status e match_catalogo)
 Fase 6 checar_contaminacao→ candidatos      (só status='novo')
-Fase 7 triagem            → candidatos_fase7 (gráficos + nota opcional da LLM)
+Fase 7 triagem            → candidatos_fase7 (uma figura de diagnóstico por candidata)
 ```
 
 A Fase 8 (`src/ficha_vsx.py`, fora do `pipeline.py`) monta a ficha de cada candidata confirmada; o envio ao VSX é manual, guiado pelo checklist da seção 11.
 
 ### Stack
 
-`lightkurve`, `astropy` (`LombScargle`, `BoxLeastSquares`), `astroquery` (MAST, VizieR, Gaia), `pandas`, `numpy`, `matplotlib`, `httpx` (LLM, reaproveitando o módulo do Rastro).
+`lightkurve`, `astropy` (`LombScargle`, `BoxLeastSquares`), `astroquery` (MAST, VizieR, Gaia), `pandas`, `numpy`, `matplotlib`, `httpx` (download direto do MAST e LLM do teste da seção 12).
 
 ## 4. Fase 1: sanity check
 
@@ -125,8 +125,9 @@ O maior risco de falso positivo no TESS é a vizinha: uma estrela variável pró
 
 Para cada candidato, gerar uma figura com: curva bruta, curva dobrada em fase, periodograma, imagem do campo com vizinhas Gaia marcadas.
 
-- Revisão humana é o veredito. A LLM (reaproveitando o módulo `llm_triage` do Rastro, OpenAI-compatible) só prioriza: classifica o tipo provável (EA, EB, EW, pulsante, rotacional) e aponta sinais de sistemático.
-- Saída: `candidatos_fase7` com `tipo_provavel`, `nota_llm`, `revisao_humana` (`confirmar`/`descartar`).
+- Revisão humana é o veredito, no app `app/revisao.py` (tabela `revisao_humana`: `confirmado`, `duvida` ou `descartado`).
+- Saída: `candidatos_fase7`, com o sinal escolhido, o deslocamento do pico no mapa por pixel e o caminho da figura.
+- Sem LLM. As decisões do pipeline são numéricas e já ficam em regras de código; no Rastro, a LLM lendo números marcou 44% dos candidatos como "alta" e mudava entre rodadas. A parte visual (tipo e P ou 2P) foi testada com LLM com visão e falhou (seção 12); a ficha da Fase 8 sugere o tipo por heurística.
 
 ## 11. Fase 8 e submissão ao VSX
 

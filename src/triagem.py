@@ -183,7 +183,7 @@ def run():
             extra = _triar(s)
         except Exception as e:
             extra = {"deslocamento_px": None, "figura": None, "erro": str(e)[:200]}
-        linhas.append({**s._asdict(), **extra, "tipo_provavel": None, "nota_llm": None})
+        linhas.append({**s._asdict(), **extra})
         print(f"  {i}/{len(escolhidos)} TIC {s.tic} {s.metodo} P={s.periodo_d:.4f}: "
               f"pico a {extra['deslocamento_px'] if extra['deslocamento_px'] is None else round(extra['deslocamento_px'], 1)} px "
               f"{extra.get('erro', '')}")
