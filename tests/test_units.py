@@ -43,6 +43,13 @@ def test_comparar_periodo():
     assert comparar_periodo(1.01, 1.0, 0.001) == (False, None)
 
 
+def test_url_qlp():
+    from src.curvas import url_qlp
+    assert url_qlp(16625529, 41) == (
+        "https://archive.stsci.edu/hlsps/qlp/s0041/0000/0000/1662/5529/"
+        "hlsp_qlp_tess_ffi_s0041-0000000016625529_tess_v01_llc.fits")
+
+
 
 def test_filtrar_alvos():
     tic = pd.DataFrame({

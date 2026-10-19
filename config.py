@@ -7,6 +7,8 @@ IMG_DIR = ROOT / "docs" / "img"
 
 # Ordem de preferencia dos produtos de curva de luz no MAST (coluna author)
 AUTORES_PREFERIDOS = ["QLP", "TESS-SPOC", "SPOC"]
+# timeout por requisicao ao MAST/TESScut; o default do astroquery (600 s) travava rodadas
+HTTP_TIMEOUT_S = 120
 
 # Grade de busca de periodo
 PERIODO_MIN_D = 0.1

@@ -19,7 +19,7 @@ from config import (BLEND_AMP_MAX, BLS_FLATTEN_D, CATALOGOS_GAIA, CATALOGOS_VIZI
                     VIZINHA_DMAG_MAX)
 from src.baixar_curvas import resumir_curva
 from src.cruzar_conhecidos import _consultar_vizier
-from src.curvas import baixar_curva
+from src.curvas import SemCurva, baixar_curva, setores_observados
 from src.detectar_sinal import _arrays, _flatten
 from src.periodo import comparar_periodo, medir_periodo_bls, medir_periodo_ls
 from src.util import retry
@@ -78,21 +78,34 @@ def _medir(lc, metodo: str) -> float:
     return medir_periodo_bls(tempo, fluxo, dy=np.full(tempo.size, ruido))["periodo_d"]
 
 
-def _persistencia(tic: int, setor: int, autor: str, metodo: str, periodo_d: float) -> dict:
-    # mesmo produto do setor original: estrela sem QLP (so SPOC) caia em "erro" aqui
+def _setores(tic: int, autor: str, ra: float, dec: float) -> set[int]:
+    if autor == "QLP":
+        # TESScut lista os setores em ~1 s; a busca do lightkurve passa pelo Portal do MAST,
+        # que as vezes leva minutos. Setor sem QLP cai em SemCurva no download
+        return set(setores_observados(ra, dec))
     busca = retry(lambda: lk.search_lightcurve(f"TIC {tic}", author=autor), "MAST")
-    setores = {int(s) for s in busca.table["sequence_number"]} if len(busca) else set()
+    return {int(s) for s in busca.table["sequence_number"]} if len(busca) else set()
+
+
+def _persistencia(tic: int, setor: int, autor: str, metodo: str, periodo_d: float,
+                  ra: float, dec: float) -> dict:
+    # mesmo produto do setor original: estrela sem QLP (so SPOC) caia em "erro" aqui
+    setores = _setores(tic, autor, ra, dec)
     # o lightkurve devolve busca vazia quando a rede cai
     if setor not in setores:
         raise RuntimeError(f"busca {autor} sem o setor {setor}, MAST fora do ar?")
-    outros = sorted(setores - {setor})
     # setores mais proximos primeiro: mesma geometria de campo, sistematicos parecidos
-    outros = sorted(outros, key=lambda s: abs(s - setor))[:PERSISTENCIA_MAX_SETORES]
+    outros = sorted(setores - {setor}, key=lambda s: abs(s - setor))
     medidos = []
-    for s in outros:
+    # setor listado pelo TESScut pode nao ter QLP: pula e tenta o proximo
+    for s in outros[:3 * PERSISTENCIA_MAX_SETORES]:
+        if len(medidos) == PERSISTENCIA_MAX_SETORES:
+            break
         try:
             lc, _ = baixar_curva(tic, s, autor)
             medidos.append((s, _medir(lc, metodo)))
+        except SemCurva:
+            continue
         except Exception as e:
             print(f"  TIC {tic} setor {s}: {str(e)[:80]}")
     ok = [s for s, p in medidos if comparar_periodo(p, periodo_d, PERIODO_MATCH_TOL_REL)[0]]
@@ -110,7 +123,8 @@ def _checar(sinal: dict) -> dict:
         linha.update(_vizinhas_variaveis(alvo, sinal["periodo_d"]))
         linha.update(_vizinhas_gaia(alvo, sinal["tmag"], sinal["amplitude"]))
         linha.update(_persistencia(int(sinal["tic"]), int(sinal["setor"]), sinal["autor"],
-                                   sinal["metodo"], sinal["periodo_d"]))
+                                   sinal["metodo"], sinal["periodo_d"], sinal["ra"],
+                                   sinal["dec"]))
     except Exception as e:
         linha.update(veredito="erro", motivo_descarte=str(e)[:200])
         return linha

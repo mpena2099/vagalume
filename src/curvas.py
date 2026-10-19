@@ -1,10 +1,58 @@
 import re
+import ssl
 from pathlib import Path
 
+import httpx
 import lightkurve as lk
+from astroquery.mast import conf as mast_conf
 
-from config import AUTORES_PREFERIDOS, CURVAS_DIR
+from config import AUTORES_PREFERIDOS, CURVAS_DIR, HTTP_TIMEOUT_S
 from src.util import retry
+
+# o Portal do MAST (por tras do search_lightcurve) as vezes leva minutos por consulta; com o
+# default de 600 s uma rodada inteira travava. Falhar cedo deixa o retry agir
+mast_conf.timeout = HTTP_TIMEOUT_S
+
+TESSCUT_SETORES = "https://mast.stsci.edu/tesscut/api/v0.1/sector"
+def url_qlp(tic: int, setor: int) -> str:
+    t = f"{tic:016d}"
+    return (f"https://archive.stsci.edu/hlsps/qlp/s{setor:04d}/{t[:4]}/{t[4:8]}/{t[8:12]}/"
+            f"{t[12:]}/hlsp_qlp_tess_ffi_s{setor:04d}-{t}_tess_v01_llc.fits")
+
+
+class SemCurva(Exception):
+    """O produto nao existe nesse setor (404), diferente de falha de rede."""
+
+
+def _get(url: str, **params) -> httpx.Response | None:
+    # CAs do sistema: o archive.stsci.edu nao valida com o bundle do certifi
+    r = httpx.get(url, params=params or None, timeout=HTTP_TIMEOUT_S, follow_redirects=True,
+                  verify=ssl.create_default_context())
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return r
+
+
+def setores_observados(ra: float, dec: float) -> list[int]:
+    """Setores em que o alvo caiu num detector, via TESScut (~1 s, sem o Portal do MAST)."""
+    r = retry(lambda: _get(TESSCUT_SETORES, ra=ra, dec=dec, radius="0m"), "TESScut")
+    return sorted({int(x["sector"]) for x in r.json()["results"]}) if r else []
+
+
+def _baixar_qlp(tic: int, setor: int, caminho: Path):
+    """Baixa o FITS do QLP direto do arquivo HLSP, sem passar pela busca do MAST."""
+    r = retry(lambda: _get(url_qlp(tic, setor)), "MAST")
+    if r is None:
+        raise SemCurva(f"TIC {tic} sem QLP no setor {setor}")
+    bruto = caminho.with_suffix(".part")
+    bruto.write_bytes(r.content)
+    try:
+        lc = lk.read(bruto)
+    finally:
+        bruto.unlink(missing_ok=True)
+    lc.to_fits(caminho, overwrite=True)
+    return lc
 
 
 def _escolher(resultado, setor):
@@ -36,6 +84,9 @@ def _caminho(tic, setor, autor):
 def baixar_curva(tic: int, setor: int | None = None, autor: str | None = None):
     if setor is not None and autor is not None and _caminho(tic, setor, autor).exists():
         lc = lk.read(_caminho(tic, setor, autor))
+    elif setor is not None and autor == "QLP":
+        CURVAS_DIR.mkdir(parents=True, exist_ok=True)
+        lc = _baixar_qlp(tic, setor, _caminho(tic, setor, autor))
     else:
         resultado = retry(lambda: lk.search_lightcurve(f"TIC {tic}", sector=setor, author=autor),
                           "MAST")
