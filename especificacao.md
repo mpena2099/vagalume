@@ -150,14 +150,33 @@ Risco que segue em aberto: a AAVSO não diz explicitamente se dados só do TESS 
 
 Fontes: fórum da AAVSO ("How to: VSX and variable star discovery", "Passband for TESS data") e o manual de submissão do VSX (aavso.org/vsx).
 
-## 12. Riscos conhecidos
+## 12. Teste: LLM com visão classifica o tipo da variável?
+
+**Pergunta.** Uma LLM que lê imagens consegue fazer o passo humano da Fase 8 (tipo da variável e escolha entre P e 2P) olhando a curva em fase? Se sim, a mesma técnica serviria para procurar curvas que não se encaixam em tipo nenhum (objetos não classificados).
+
+**Método** (`tools/teste_llm_visao.py`). Gabarito: estrelas do VSX com tipo firme (sem ":"), período de 0,1 a 13 d e V de 8 a 13,5, num raio de 5° do campo do setor 55; até 12 por classe (EA, EB, EW, ROT, DSCT, RR). Para cada uma: TIC pelo VizieR, curva QLP do setor mais perto do 55, dobra num período de referência sorteado entre o verdadeiro e a metade (o erro típico do LS), figura com dois painéis (A em P, B em 2P). A LLM responde tipo e painel; a heurística `sugerir` da Fase 8 responde o mesmo, como base. Resultados em `data/teste_llm/resultados_<modelo>.csv`, gravados a cada estrela; o script retoma de onde parou.
+
+**Resultado (2026-10-19, plano grátis do Gemini):**
+
+| Modelo | Estrelas | Tipo certo | Painel certo (LLM) | Painel certo (heurística) |
+|---|---|---|---|---|
+| gemini-2.5-flash | 22 (12 DSCT, 10 EA) | 23% | 55% | não medido |
+| gemini-2.5-flash-lite | 18 (12 DSCT, 6 EA) | 44% (EA 6/6, DSCT 2/12) | 44% | 94% |
+
+As figuras foram conferidas a olho e estão boas. Os erros são do modelo: uma senoide limpa de 0,145 d, que no painel B aparece como dois ciclos iguais, foi lida como "dois mínimos distintos, binária EA". Parte do erro em EA também vem do gabarito: várias "EA" do VSX têm brilho curvo entre os eclipses e seriam defensáveis como EB.
+
+**Conclusão.** Com os modelos grátis de hoje, a LLM com visão não serve para isso: erra o tipo na maioria das vezes e escolhe o período pior que o acaso, enquanto a heurística numérica acerta o período em 94%. A ideia de procurar objetos não classificados com LLM fica parada até haver um modelo melhor e acessível. Para repetir com outro modelo: `python -u tools/teste_llm_visao.py --modelo <modelo>` (OpenAI-compatible; `LLM_VISAO_*` em `config.py`).
+
+**Limites do teste.** Amostra pequena e só de duas classes, porque o plano grátis do Gemini dá cerca de 20 pedidos por dia por modelo; `gemini-3.8-flash` estava sobrecarregado (503), o modelo com visão do Groq saiu do plano grátis, o GLM com visão não está no plano da Z.ai e o Gemma 3 deixou de ser grátis no OpenRouter.
+
+## 13. Riscos conhecidos
 
 - **Contaminação por vizinha:** principal fonte de falso positivo (Fase 6).
 - **Sistemáticos do TESS:** luz espalhada, descarga de momento angular, órbita de 13,7 d (cortes da Fase 4).
 - **Harmônicos:** binária eclipsante com eclipses iguais aparece com metade do período real. A triagem deve testar 2x o período.
 - **Volume:** a maioria dos sinais será conhecida ou espúria. Isso é esperado e serve de validação.
 
-## 13. Próximos passos
+## 14. Próximos passos
 
 1. Criar repositório, `config.py`, `requirements.txt`.
 2. Implementar a Fase 1 e passar.

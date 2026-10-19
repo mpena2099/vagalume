@@ -68,6 +68,16 @@ def test_ficha_vsx():
     assert not eh_catalogo_variavel("Variability Upper Limits for Non-Variable Sources")
 
 
+def test_teste_llm_visao():
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+    from teste_llm_visao import classe_vsx, ler_resposta
+    assert classe_vsx("EA/DM") == "EA" and classe_vsx("BY") == "ROT" and classe_vsx("RRAB") == "RR"
+    assert classe_vsx("EW:") is None and classe_vsx("DSCT|GDOR") is None and classe_vsx("SR") is None
+    assert ler_resposta("TIPO: EW\nPAINEL: B\nMOTIVO: minimos iguais") == ("EW", "B", "minimos iguais")
+    assert ler_resposta("**TIPO:** EA\n**PAINEL:** A") [:2] == ("EA", "A")
+    assert ler_resposta("nada") == (None, None, "")
+
+
 def test_url_qlp():
     from src.curvas import url_qlp
     assert url_qlp(16625529, 41) == (

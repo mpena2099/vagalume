@@ -88,6 +88,16 @@ DESLOCAMENTO_MAX_PX = 1.0
 # Fase 8: fichas de submissao ao VSX (src/ficha_vsx.py, manual)
 VSX_DIR = ROOT / "data" / "vsx"
 
+# LLM com visao (tools/teste_llm_visao.py): formato OpenAI-compatible, como no Rastro.
+# Chave da env var abaixo, senao do auth.json do OpenCode (campo <provedor>.key).
+# Groq tirou o modelo com visao (llama-4-scout) do plano gratis; o Gemini tem.
+LLM_VISAO_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+LLM_VISAO_MODELO = "gemini-2.5-flash"
+LLM_VISAO_CHAVE_ENV = "GEMINI_API_KEY"
+LLM_VISAO_CHAVE_PROVEDOR = "gemini"
+# plano gratis do Gemini Flash: ~10 pedidos por minuto
+LLM_VISAO_INTERVALO_S = 7
+
 # tipos de objeto do SIMBAD que indicam variavel
 SIMBAD_VARIAVEIS = {"V*", "Pu*", "EB*", "RR*", "Ce*", "cC*", "dS*", "gD*", "BY*", "RS*",
                     "Ro*", "Mi*", "LP*", "sr*", "Ir*", "Er*", "Fl*", "El*", "a2*", "bC*",
