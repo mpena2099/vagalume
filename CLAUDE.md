@@ -14,8 +14,7 @@ Rodar da raiz do repositório. O venv já existe em `venv/`.
 
 ```bash
 source venv/bin/activate
-export PYTHONUNBUFFERED=1
-python pipeline.py                 # fases implementadas, em sequência
+python -u pipeline.py              # -u: print sai na hora mesmo com saída redirecionada
 python tests/test_units.py         # testes offline (ou: python -m pytest -q tests)
 python -c "from src.sanity_check import run; run()"   # uma fase isolada
 streamlit run app/revisao.py       # revisão visual das candidatas da Fase 7

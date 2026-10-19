@@ -52,11 +52,12 @@ As sete fases estão implementadas. A Fase 1 redescobre WASP-18 b, uma binária 
 ```bash
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-export PYTHONUNBUFFERED=1
-python pipeline.py              # roda as fases implementadas
+python -u pipeline.py           # roda as fases implementadas
 python tests/test_units.py      # testes offline (ou pytest)
 streamlit run app/revisao.py    # revisão visual das candidatas
 ```
+
+`-u` faz o Python escrever cada `print` na hora. No terminal isso já acontece, mas com a saída redirecionada (`> log.txt`, `| tee log.txt`, `nohup`) o Python junta tudo em blocos e o log fica parado por minutos, parecendo travado, nas fases longas.
 
 As decisões da revisão ficam na tabela `revisao_humana`, que o pipeline nunca recria.
 
