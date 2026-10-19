@@ -26,14 +26,20 @@ PIXEL_ARCSEC = 21.0
 
 
 def escolher_sinal(sinais: pd.DataFrame) -> pd.DataFrame:
-    """Um sinal por estrela candidata: o de maior amplitude/ruido, sem os de vizinha variavel."""
+    """Um sinal por estrela candidata: o de maior amplitude/ruido entre os que passaram.
+
+    `sinais_todos` lista tambem os descartados por nao persistir, como contexto. O
+    escolhido sai so dos de veredito 'candidato': antes um BLS mais forte que nao
+    persistia ganhava do LS que persistia, e a figura mostrava o periodo errado.
+    """
     tics = sinais.loc[sinais["veredito"] == "candidato", "tic"].unique()
     s = sinais[sinais["tic"].isin(tics) & (sinais["motivo_descarte"] != "vizinha_variavel")]
     s = s.assign(forca=s["amplitude"] / s["ruido_ptp"]).sort_values("forca", ascending=False)
     outros = s.groupby("tic").apply(
         lambda g: ", ".join(f"{m.upper()} {p:.4f} d" for m, p in zip(g["metodo"], g["periodo_d"])),
         include_groups=False).rename("sinais_todos")
-    return s.drop_duplicates("tic").join(outros, on="tic").reset_index(drop=True)
+    escolhidos = s[s["veredito"] == "candidato"].drop_duplicates("tic")
+    return escolhidos.join(outros, on="tic").reset_index(drop=True)
 
 
 def destendencia_por_orbita(tempo: np.ndarray, fluxo: np.ndarray, grau: int = 2) -> np.ndarray:
@@ -154,7 +160,7 @@ def _figura(s, tempo, fluxo, campo, mapa, wcs, gaia, alvo_xy, pico, desloc) -> P
 
 def _triar(s) -> dict:
     alvo = SkyCoord(s.ra, s.dec, unit="deg")
-    lc, _ = baixar_curva(int(s.tic), int(s.setor), "QLP")
+    lc, _ = baixar_curva(int(s.tic), int(s.setor), s.autor)
     tempo, fluxo = _arrays(_flatten(lc, LS_FLATTEN_D))
     epoca = tempo[np.argmin(fluxo)]
     campo, mapa, wcs, alvo_xy, pico, desloc = _mapa_pixels(int(s.tic), int(s.setor), s, epoca,
@@ -166,6 +172,7 @@ def _triar(s) -> dict:
 
 def run():
     with sqlite3.connect(SQLITE_PATH) as con:
+        # autor (QLP/SPOC) vem da Fase 6, que o leu da tabela alvos
         sinais = pd.read_sql("SELECT * FROM candidatos", con)
     escolhidos = escolher_sinal(sinais)
     print(f"  {len(escolhidos)} estrelas candidatas")

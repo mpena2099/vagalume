@@ -78,19 +78,20 @@ def _medir(lc, metodo: str) -> float:
     return medir_periodo_bls(tempo, fluxo, dy=np.full(tempo.size, ruido))["periodo_d"]
 
 
-def _persistencia(tic: int, setor: int, metodo: str, periodo_d: float) -> dict:
-    busca = retry(lambda: lk.search_lightcurve(f"TIC {tic}", author="QLP"), "MAST")
+def _persistencia(tic: int, setor: int, autor: str, metodo: str, periodo_d: float) -> dict:
+    # mesmo produto do setor original: estrela sem QLP (so SPOC) caia em "erro" aqui
+    busca = retry(lambda: lk.search_lightcurve(f"TIC {tic}", author=autor), "MAST")
     setores = {int(s) for s in busca.table["sequence_number"]} if len(busca) else set()
     # o lightkurve devolve busca vazia quando a rede cai
     if setor not in setores:
-        raise RuntimeError(f"busca QLP sem o setor {setor}, MAST fora do ar?")
+        raise RuntimeError(f"busca {autor} sem o setor {setor}, MAST fora do ar?")
     outros = sorted(setores - {setor})
     # setores mais proximos primeiro: mesma geometria de campo, sistematicos parecidos
     outros = sorted(outros, key=lambda s: abs(s - setor))[:PERSISTENCIA_MAX_SETORES]
     medidos = []
     for s in outros:
         try:
-            lc, _ = baixar_curva(tic, s, "QLP")
+            lc, _ = baixar_curva(tic, s, autor)
             medidos.append((s, _medir(lc, metodo)))
         except Exception as e:
             print(f"  TIC {tic} setor {s}: {str(e)[:80]}")
@@ -108,8 +109,8 @@ def _checar(sinal: dict) -> dict:
     try:
         linha.update(_vizinhas_variaveis(alvo, sinal["periodo_d"]))
         linha.update(_vizinhas_gaia(alvo, sinal["tmag"], sinal["amplitude"]))
-        linha.update(_persistencia(int(sinal["tic"]), int(sinal["setor"]), sinal["metodo"],
-                                   sinal["periodo_d"]))
+        linha.update(_persistencia(int(sinal["tic"]), int(sinal["setor"]), sinal["autor"],
+                                   sinal["metodo"], sinal["periodo_d"]))
     except Exception as e:
         linha.update(veredito="erro", motivo_descarte=str(e)[:200])
         return linha
@@ -122,7 +123,8 @@ def _checar(sinal: dict) -> dict:
 
 def run():
     with sqlite3.connect(SQLITE_PATH) as con:
-        sinais = pd.read_sql("SELECT * FROM sinais_fase5 WHERE status = 'novo'", con)
+        sinais = pd.read_sql("SELECT s.*, a.autor FROM sinais_fase5 s JOIN alvos a USING (tic) "
+                             "WHERE s.status = 'novo'", con)
     print(f"  {len(sinais)} sinais novos em {sinais['tic'].nunique()} estrelas")
 
     linhas = []

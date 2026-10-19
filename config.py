@@ -34,7 +34,9 @@ LS_FLATTEN_D = 4.0
 BLS_FLATTEN_D = 1.5
 LS_FAP_MAX = 1e-4
 BLS_SNR_MIN = 10
-N_CICLOS_MIN = 2
+# 2 deixava passar BLS de ~11 d (2,4 ciclos num setor), que eram sistematicos e
+# nao persistiam em outros setores
+N_CICLOS_MIN = 3
 # amplitude pico a pico (LS) ou profundidade (BLS) contra o ruido ponto a ponto
 AMP_RUIDO_MIN = 3
 # orbita do TESS (13,7 d), harmonicos e ~1 d

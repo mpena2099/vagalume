@@ -37,11 +37,14 @@ def mover(delta: int, total: int):
     st.session_state.pos = max(0, min(total - 1, st.session_state.pos + delta))
 
 
-def registrar(tic: int, decisao: str, total: int):
+def registrar(tic: int, decisao: str, total: int, fica_na_lista: bool):
     nota = st.session_state.get(f"nota_{tic}", "")
     with conectar() as conn:
         dados.salvar_revisao(conn, tic, decisao, nota)
-    mover(+1, total)
+    # Se a decisao tira a candidata da lista (ex: filtro Pendente), a proxima sobe
+    # pra posicao atual: avancar aqui pularia uma sem mostrar.
+    if fica_na_lista:
+        mover(+1, total)
 
 
 def limpar(tic: int):
@@ -82,8 +85,12 @@ if lista.empty:
     st.stop()
 
 total = len(lista)
-if "pos" not in st.session_state or st.session_state.pos >= total:
+# Filtro novo = lista nova: volta pro inicio em vez de cair numa posicao qualquer.
+assinatura = (situacao, ordem, busca.strip())
+if st.session_state.get("assinatura") != assinatura:
+    st.session_state.assinatura = assinatura
     st.session_state.pos = 0
+st.session_state.pos = max(0, min(total - 1, st.session_state.get("pos", 0)))
 nav = st.sidebar.columns(2)
 nav[0].button("◀ Anterior", on_click=mover, args=(-1, total), width="stretch")
 nav[1].button("Próxima ▶", on_click=mover, args=(+1, total), width="stretch")
@@ -101,8 +108,12 @@ m[1].metric("Amplitude", f"{r['amplitude'] * 100:.2f}%",
 m[2].metric("Tmag", f"{r['tmag']:.2f}")
 desloc = r.get("deslocamento_px")
 m[3].metric("Pico do sinal", "—" if pd.isna(desloc) else f"{desloc:.1f} px do alvo")
-m[4].metric("Outros setores", r.get("setores_extra") or "—",
-            r.get("periodos_extra") or "", delta_color="off")
+def _texto(v) -> str:
+    return "" if v is None or pd.isna(v) else str(v)
+
+
+m[4].metric("Outros setores", _texto(r.get("setores_extra")) or "—",
+            _texto(r.get("periodos_extra")), delta_color="off")
 st.caption(f"Todos os sinais da estrela: {r.get('sinais_todos')}  ·  "
            f"RA {r['ra']:.5f}  Dec {r['dec']:+.5f}")
 
@@ -144,7 +155,7 @@ st.text_area("Nota (opcional): tipo provável, período real, o que chamou aten�
              key=f"nota_{tic}", value=r["nota"] if pd.notna(r["nota"]) else "", height=70)
 b = st.columns(3)
 b[0].button("Confirmar (parece real)", type="primary", on_click=registrar,
-            args=(tic, "confirmado", total), width="stretch")
-b[1].button("Dúvida", on_click=registrar, args=(tic, "duvida", total), width="stretch")
-b[2].button("Descartar (falso alarme)", on_click=registrar, args=(tic, "descartado", total),
+            args=(tic, "confirmado", total, situacao in ("todas", "confirmado")), width="stretch")
+b[1].button("Dúvida", on_click=registrar, args=(tic, "duvida", total, situacao in ("todas", "duvida")), width="stretch")
+b[2].button("Descartar (falso alarme)", on_click=registrar, args=(tic, "descartado", total, situacao in ("todas", "descartado")),
             width="stretch")

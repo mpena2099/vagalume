@@ -84,7 +84,7 @@ Métricas gravadas em `sinais`: `tic`, `setor`, `metodo`, `periodo_d`, `amplitud
 Cortes para virar sinal:
 
 - `LS_FAP_MAX = 1e-4` ou `BLS_SNR_MIN = 10`.
-- Pelo menos 2 ciclos completos no setor (`periodo_d < ~13 d` num setor de ~27 d).
+- Pelo menos 3 ciclos completos no setor (`periodo_d < ~9 d` num setor de ~27 d).
 - Descartar períodos próximos de sistemáticos conhecidos do TESS: ~13,7 d (órbita do satélite), seus harmônicos, e ~1 d.
 - Amplitude acima de 3x o ruído ponto a ponto.
 

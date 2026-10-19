@@ -77,6 +77,7 @@ def test_avaliar_sinal():
     assert avaliar_sinal("ls", 2.3, 0.01, 1e-2, 27, 0.002) == "fap"
     assert avaliar_sinal("bls", 2.3, 0.01, 5, 27, 0.002) == "snr"
     assert avaliar_sinal("ls", 20, 0.01, 1e-10, 27, 0.002) == "ciclos"
+    assert avaliar_sinal("bls", 11.2, 0.01, 20, 27, 0.002) == "ciclos"
     assert avaliar_sinal("ls", 1.01, 0.01, 1e-10, 27, 0.002) == "sistematico"
     assert avaliar_sinal("bls", 2.3, 0.004, 20, 27, 0.002) == "amplitude"
 
@@ -130,6 +131,24 @@ def test_alertas():
          "n_ciclos": 2.5, "persistente": None, "gaia_candidata": False}
     assert len(dados.alertas(r)) == 4
     assert dados.alertas({"deslocamento_px": 0.2, "n_ciclos": 20, "persistente": True}) == []
+    # NaN vindo do SQLite nao pode virar alerta
+    assert dados.alertas({"deslocamento_px": 0.2, "n_ciclos": 20, "persistente": True,
+                          "suspeito_blend": float("nan"), "gaia_candidata": float("nan")}) == []
+
+
+def test_escolher_sinal():
+    from src.triagem import escolher_sinal
+    s = pd.DataFrame([
+        {"tic": 1, "metodo": "bls", "periodo_d": 11.2, "amplitude": 0.05, "ruido_ptp": 0.001,
+         "veredito": "descartado", "motivo_descarte": "nao_persiste"},
+        {"tic": 1, "metodo": "ls", "periodo_d": 1.35, "amplitude": 0.01, "ruido_ptp": 0.001,
+         "veredito": "candidato", "motivo_descarte": None},
+        {"tic": 2, "metodo": "ls", "periodo_d": 2.0, "amplitude": 0.01, "ruido_ptp": 0.001,
+         "veredito": "descartado", "motivo_descarte": "nao_persiste"},
+    ])
+    e = escolher_sinal(s)
+    assert e["tic"].tolist() == [1] and e.loc[0, "metodo"] == "ls"
+    assert "BLS 11.2000 d" in e.loc[0, "sinais_todos"]
 
 
 
