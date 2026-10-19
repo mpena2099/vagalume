@@ -40,7 +40,7 @@ Fase 6 checar_contaminacao→ candidatos      (só status='novo')
 Fase 7 triagem            → candidatos_fase7 (gráficos + nota opcional da LLM)
 ```
 
-A Fase 8 (submissão ao VSX) é manual, guiada por checklist (seção 11).
+A Fase 8 (`src/ficha_vsx.py`, fora do `pipeline.py`) monta a ficha de cada candidata confirmada; o envio ao VSX é manual, guiado pelo checklist da seção 11.
 
 ### Stack
 
@@ -125,22 +125,27 @@ Para cada candidato, gerar uma figura com: curva bruta, curva dobrada em fase, p
 - Revisão humana é o veredito. A LLM (reaproveitando o módulo `llm_triage` do Rastro, OpenAI-compatible) só prioriza: classifica o tipo provável (EA, EB, EW, pulsante, rotacional) e aponta sinais de sistemático.
 - Saída: `candidatos_fase7` com `tipo_provavel`, `nota_llm`, `revisao_humana` (`confirmar`/`descartar`).
 
-## 11. Submissão ao VSX (manual)
+## 11. Fase 8 e submissão ao VSX
 
-Pelo que a AAVSO publica, o moderador confere três coisas: o objeto está identificado corretamente, é variável e é desconhecido. Checklist:
+O moderador do VSX confere três coisas: o objeto está identificado corretamente, é variável e é desconhecido. O VSX não tem API de submissão: o envio é pelo formulário do site, e na primeira vez a AAVSO recomenda o **New Star Wizard**, que guia campo a campo. A fila de moderação é longa; conte com semanas.
 
-1. Conta no site da AAVSO.
-2. Verificar de novo no VSX, VizieR e SIMBAD que o objeto é novo.
-3. Posição e identificação pela fonte Gaia DR3 correspondente.
-4. Tipo de variável pela nomenclatura do VSX (ver o PDF de tipos no site do VSX).
-5. Período e época (instante de mínimo ou máximo em BJD).
-6. Faixa de magnitude: a AAVSO recomenda usar a magnitude média V de catálogo (ex.: Gaia DR3) como máximo e a amplitude TESS no campo de mínimo, marcando "Minimum is an amplitude". A banda "TESS" vai no campo de banda personalizada.
-7. Anexar a curva de luz e a curva em fase como evidência.
+`python src/ficha_vsx.py` gera `data/vsx/fichas.md` (um bloco por estrela, com os campos do formulário), `fichas.csv` e a curva em fase `<tic>_fase.png`. Checklist por estrela (marcado o que o pipeline já entrega):
 
-Pontos em aberto, a confirmar no manual atual de submissão do VSX antes da primeira submissão:
+1. **Revisão visual concluída** no app: decisão `confirmado` em `revisao_humana`. *(app)*
+2. **Período certo, não um harmônico.** Binária eclipsante costuma sair no LS com metade do período real: a figura da Fase 7 mostra a curva dobrada em P e em 2P; escolher o que separa os dois eclipses. *(Fase 8 sugere P ou 2P: 2P quando, dobrada em 2P, a curva mostra eclipses estreitos com brilho plano ou mínimos de profundidades diferentes; conferir na curva em fase)*
+3. **Persistência:** o sinal reaparece em outros setores com o mesmo período. *(Fase 6)*
+4. **Fonte certa no pixel:** o mapa por pixel da Fase 7 tem o pico no alvo, e não há vizinha Gaia brilhante capaz de gerar a amplitude (`suspeito_blend` falso). O fórum da AAVSO cita a contaminação por vizinhas como o principal cuidado com TESS. *(Fases 6 e 7)*
+5. **Ainda desconhecido, conferido de novo na véspera:** VSX, SIMBAD e VizieR em geral (não só os catálogos da Fase 5), incluindo ATLAS (ATO), Gaia DR3, ZTF, Pan-STARRS e CSS. Os moderadores avisam que VSX e SIMBAD sozinhos não garantem que o objeto é novo. Entrada marcada como "dubious" no ATO pode ser reivindicada. *(Fase 8 consulta o VizieR inteiro a 30" e lista os catálogos de variáveis; abrir cada um e ver se é a mesma estrela e o mesmo período)*
+6. **Identificação e posição** pela fonte Gaia DR3 correspondente (ID e coordenadas). *(Fase 8: fonte mais brilhante a até 3")*
+7. **Tipo de variável** pela nomenclatura do VSX (EA, EB, EW, ROT, DSCT, etc.; PDF de tipos no site do VSX). Tipo espectral não é obrigatório. *(Fase 8 sugere EA, EB ou "ROT, EW ou pulsante"; a palavra final é humana)*
+8. **Período e época:** período em dias e instante de mínimo (eclipse) ou máximo (pulsante) em BJD; no TESS, BJD = BTJD + 2457000. *(Fase 8: período sugerido e época do mínimo)*
+9. **Faixa de magnitude:** magnitude média V de catálogo (derivada do Gaia DR3) no campo de máximo e a amplitude TESS no de mínimo, com "Minimum is an amplitude" marcado e "TESS" no campo de banda personalizada. Se a amplitude for grande o bastante para ZTF ou ASAS-SN, a AAVSO prefere combinar com esses dados e usar as magnitudes padrão deles. *(Fase 8: V pela relação G, BP-RP de Riello+2021 e amplitude pico a pico na curva dobrada em 200 bins, que não dilui eclipse estreito; avisa quando a amplitude passa de 0,05 mag)*
+10. **Evidência anexada:** curva em fase (obrigatória para variável periódica) e curva no tempo, feitas por você. O manual avisa que não basta apontar uma curva que qualquer um acha nos bancos de dados. *(Fase 8: curva em fase; Fase 7: figura completa)*
+11. **Nome provisório**, se quiser: o VSX aceita designação própria (ex.: "VGL V1"). *(manual)*
 
-- Se dados só do TESS bastam ou se o moderador pede confirmação com outros dados. Um post antigo do fórum dizia que dados espaciais precisavam de observação própria de confirmação; não está claro se a regra continua. Se continuar, as curvas ZTF ou ASAS-SN públicas do mesmo objeto podem servir de segunda fonte.
-- Campos obrigatórios exatos do formulário.
+Risco que segue em aberto: a AAVSO não diz explicitamente se dados só do TESS bastam. O formato que ela recomenda para TESS (item 9) indica que sim, mas pede cautela com dados escassos e sugere combinar levantamentos. Para as candidatas com amplitude acima de ~0,05 mag, juntar a curva ZTF reduz esse risco.
+
+Fontes: fórum da AAVSO ("How to: VSX and variable star discovery", "Passband for TESS data") e o manual de submissão do VSX (aavso.org/vsx).
 
 ## 12. Riscos conhecidos
 

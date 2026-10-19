@@ -78,6 +78,9 @@ TRIAGEM_RECORTE_PX = 11
 # pico do mapa de amplitude a mais que isso do alvo sugere outra fonte
 DESLOCAMENTO_MAX_PX = 1.0
 
+# Fase 8: fichas de submissao ao VSX (src/ficha_vsx.py, manual)
+VSX_DIR = ROOT / "data" / "vsx"
+
 # tipos de objeto do SIMBAD que indicam variavel
 SIMBAD_VARIAVEIS = {"V*", "Pu*", "EB*", "RR*", "Ce*", "cC*", "dS*", "gD*", "BY*", "RS*",
                     "Ro*", "Mi*", "LP*", "sr*", "Ir*", "Er*", "Fl*", "El*", "a2*", "bC*",

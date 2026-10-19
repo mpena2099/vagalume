@@ -43,6 +43,31 @@ def test_comparar_periodo():
     assert comparar_periodo(1.01, 1.0, 0.001) == (False, None)
 
 
+def test_ficha_vsx():
+    from src.ficha_vsx import (amplitude_dobrada_mag, eh_catalogo_variavel, epoca_minimo, sugerir,
+                               v_de_gaia)
+    assert abs(v_de_gaia(10.0, 0.0) - 10.02704) < 1e-6
+    rng = np.random.default_rng(1)
+    ruido = rng.normal(0, 0.0005, TEMPO.size)
+    # binaria destacada, P = 4 d, eclipses de 20% e 8%: o LS acha 2 d
+    fase = (TEMPO % 4.0) / 4.0
+    ea = 1 - 0.2 * (np.abs(fase - 0.1) < 0.01) - 0.08 * (np.abs(fase - 0.6) < 0.01) + ruido
+    p, tipo, _ = sugerir("ls", 2.0, TEMPO, ea)
+    assert tipo == "EA" and abs(p - 4.0) < 1e-9, (p, tipo)
+    assert abs(amplitude_dobrada_mag(TEMPO, ea, 4.0) - 2.5 * np.log10(1 / 0.8)) < 0.03
+    assert abs((epoca_minimo(TEMPO, ea, 4.0) - 0.4) / 4.0 % 1) < 0.02 or \
+        abs((epoca_minimo(TEMPO, ea, 4.0) - 0.4) / 4.0 % 1 - 1) < 0.02
+    # senoide: fica no periodo do LS e o tipo fica em aberto
+    sen = 1 + 0.01 * np.sin(2 * np.pi * TEMPO / 1.3) + ruido
+    assert sugerir("ls", 1.3, TEMPO, sen)[:2] == (1.3, "ROT, EW ou pulsante")
+    # contato com minimos desiguais: varia o tempo todo, P real = 2x o do LS
+    eb = 1 - 0.03 * np.cos(4 * np.pi * TEMPO / 3.0) ** 2 - 0.01 * np.cos(2 * np.pi * TEMPO / 3.0) + ruido
+    p, tipo, _ = sugerir("ls", 1.5, TEMPO, eb)
+    assert tipo == "EB" and abs(p - 3.0) < 1e-9, (p, tipo)
+    assert eh_catalogo_variavel("The catalog of new slowly pulsating B-type (SPB) stars")
+    assert not eh_catalogo_variavel("Variability Upper Limits for Non-Variable Sources")
+
+
 def test_url_qlp():
     from src.curvas import url_qlp
     assert url_qlp(16625529, 41) == (
