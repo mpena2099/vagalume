@@ -64,7 +64,8 @@ def _toi() -> pd.DataFrame:
 
 def _consultar_vizier(alvo: SkyCoord, raio_arcsec: float) -> list[dict]:
     catalogos = list(CATALOGOS_VIZIER) + list(CATALOGOS_GAIA)
-    res = retry(lambda: Vizier(columns=["**"], row_limit=-1).query_region(
+    # _RAJ2000/_DEJ2000: posicao calculada pelo VizieR, para catalogo sem coluna de RA/Dec
+    res = retry(lambda: Vizier(columns=["**", "_RAJ2000", "_DEJ2000"], row_limit=-1).query_region(
         alvo, radius=raio_arcsec * u.arcsec, catalog=catalogos), "VizieR")
 
     matches = []
@@ -73,8 +74,9 @@ def _consultar_vizier(alvo: SkyCoord, raio_arcsec: float) -> list[dict]:
         gaia = cat in CATALOGOS_GAIA
         nome_cat, col_periodo = (CATALOGOS_GAIA[cat], None) if gaia else CATALOGOS_VIZIER[cat]
         for linha in res[chave]:
-            ra_c = _valor(linha, "RAJ2000") if "RAJ2000" in linha.colnames else _valor(linha, "RA_ICRS")
-            dec_c = _valor(linha, "DEJ2000") if "DEJ2000" in linha.colnames else _valor(linha, "DE_ICRS")
+            col_ra = next(c for c in ("RAJ2000", "RA_ICRS", "_RAJ2000") if c in linha.colnames)
+            col_dec = next(c for c in ("DEJ2000", "DE_ICRS", "_DEJ2000") if c in linha.colnames)
+            ra_c, dec_c = _valor(linha, col_ra), _valor(linha, col_dec)
             periodo = _valor(linha, col_periodo)
             if cat == "I/358/veb" and _valor(linha, "Freq"):
                 periodo = 1 / float(linha["Freq"])

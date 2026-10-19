@@ -99,6 +99,9 @@ Cone search de raio `RAIO_MATCH_ARCSEC = 30` (o pixel do TESS tem 21"; uma vari�
 | Gaia DR3 variabilidade | VizieR `I/358` (tabelas de classificação e de binárias eclipsantes) | Mais de 2 milhões de binárias eclipsantes candidatas e outras classes |
 | ASAS-SN variáveis | VizieR | Variáveis brilhantes do céu todo |
 | ZTF variáveis periódicas (Chen et al. 2020) | VizieR `J/ApJS/249/18` | Variáveis do hemisfério norte, até mag ~20 |
+| ATLAS variáveis candidatas (Heinze et al. 2018) | VizieR `J/AJ/156/241` | 4,7 milhões de candidatas do céu ao norte de Dec -30° |
+| Variáveis periódicas do TESS, SPB do TESS, rotação do TIC | VizieR `J/ApJS/276/57`, `J/ApJS/268/16`, `J/AJ/155/39/table6` | Catálogos recentes que o VSX ainda não absorveu |
+| Gaia DR2 grande amplitude | VizieR `J/A+A/648/A44` | Variáveis de grande amplitude, sem período |
 | TOI (candidatos a planeta) | CSV do ExoFOP | Sinais já investigados pela missão TESS |
 | SIMBAD | `astroquery.simbad` | Literatura em geral |
 

@@ -57,6 +57,13 @@ CATALOGOS_VIZIER = {
     "J/ApJS/258/16": ("TESS-EBs", "Per"),
     "J/ApJS/249/18": ("ZTF", "Per"),
     "II/366": ("ASAS-SN", "Per"),
+    # achados pela busca no VizieR inteiro da Fase 8: 5 das 14 candidatas do setor 55 ja
+    # estavam publicadas nestes
+    "J/ApJS/268/16": ("TESS-SPB", "Per"),
+    "J/ApJS/276/57": ("TESS-periodicas", "Per"),
+    "J/AJ/156/241": ("ATLAS", "fp-LSper"),
+    "J/AJ/155/39/table6": ("TIC-rotacao", "Prot"),
+    "J/A+A/648/A44": ("Gaia-grande-amp", None),
 }
 # Gaia DR3 nao bloqueia submissao ao VSX, so reduz o merito
 CATALOGOS_GAIA = {
