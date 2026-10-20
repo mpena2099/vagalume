@@ -178,6 +178,34 @@ def test_alertas():
                           "suspeito_blend": float("nan"), "gaia_candidata": float("nan")}) == []
 
 
+def test_checklist_sugestao():
+    def caso(**mudancas):
+        r = {"deslocamento_px": 0.3, "persistente": True, "setores_extra": "41,75",
+             "periodos_extra": "2.20,2.19", "n_ciclos": 12.0, "forca": 8.0,
+             "suspeito_blend": False, "gaia_candidata": False, "amp_necessaria_min": 0.2}
+        r.update(mudancas)
+        return r
+
+    itens = dados.checklist(caso())
+    assert [i["estado"] for i in itens] == ["ok"] * 6
+    assert dados.sugestao(itens) == "confirmado"
+
+    itens = dados.checklist(caso(deslocamento_px=2.5))
+    assert itens[0]["estado"] == "problema" and dados.sugestao(itens) == "descartado"
+
+    itens = dados.checklist(caso(persistente=None))
+    assert itens[1]["estado"] == "atencao" and dados.sugestao(itens) == "duvida"
+
+    itens = dados.checklist(caso(persistente=0))
+    assert itens[1]["estado"] == "problema" and dados.sugestao(itens) == "descartado"
+
+    itens = dados.checklist(caso(deslocamento_px=float("nan")))
+    assert itens[0]["estado"] == "atencao" and dados.sugestao(itens) == "duvida"
+
+    itens = dados.checklist(caso(n_ciclos=3.5))
+    assert itens[2]["estado"] == "atencao" and dados.sugestao(itens) == "duvida"
+
+
 def test_escolher_sinal():
     from src.triagem import escolher_sinal
     s = pd.DataFrame([

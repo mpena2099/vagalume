@@ -67,7 +67,7 @@ As curvas baixadas ficam em cache em `data/curvas/` e as figuras de triagem em `
 
 ## Revisão visual: como classificar
 
-O app mostra, para cada candidata, os números principais, os alertas do pipeline (vizinha brilhante, poucos ciclos, sem outro setor para comparar), links para VSX e SIMBAD e uma figura com seis painéis:
+O app mostra, para cada candidata, os números principais, um checklist com seis itens e uma sugestão do pipeline, links para VSX e SIMBAD e uma figura com seis painéis:
 
 | Painel | O que mostra | O que procurar |
 |---|---|---|
@@ -96,6 +96,10 @@ O app mostra, para cada candidata, os números principais, os alertas do pipelin
 - **Pulsante ou rotação**: um ciclo limpo por período; em 2P aparecem dois ciclos idênticos. Abaixo de ~0,2 d, só pode ser pulsante (nenhuma binária de contato gira tão rápido). Rotação (manchas) costuma mudar de forma de um setor para outro.
 
 A Fase 8 sugere P ou 2P e o tipo automaticamente, mas a palavra final é sua. **Confirmar** não é descoberta: quer dizer que passa no olho. **Descartar** não apaga nada: a decisão fica gravada com a nota e dá para rever no filtro "Situação".
+
+**Checklist e sugestão do pipeline.** Acima da figura, cada candidata mostra seis itens com ícone: ✅ quando está tudo bem, ⚠️ quando pede atenção e ❌ quando pesa contra. Os itens são o pico do sinal no alvo (até 1 px), a repetição em outros setores, o número de ciclos (4 ou mais), a força do sinal (5 vezes o ruído ou mais), a vizinha brilhante e a presença no Gaia DR3. O app resume tudo em uma sugestão (Confirmado, Dúvida ou Descartado), que vale só se a curva dobrada em P e 2P tiver uma linha clara. A decisão continua sendo sua.
+
+**Modo treino.** A página Treino (na barra lateral) mostra casos com resposta conhecida: variáveis já catalogadas e sinais que o pipeline descartou (vizinha variável, sinal que não se repete, período de sistemático do TESS, sinal fraco demais, poucos ciclos), em número parecido. Ela exibe os painéis P, 2P e mapa, os números e o checklist, sem a resposta. Você escolhe Confirmar, Dúvida ou Descartar, vê a resposta certa com a explicação e acumula pontos (dúvida vale meio ponto). Gere os casos com `python -u tools/gerar_treino.py`; o script usa a rede e retoma de onde parou.
 
 **Casos de referência.** Todos são variáveis já catalogadas ou sinais que o próprio pipeline descartou (gerados por `python -u tools/gerar_referencias.py`).
 

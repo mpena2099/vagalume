@@ -93,6 +93,9 @@ TRIAGEM_RECORTE_PX = 11
 # pico do mapa de amplitude a mais que isso do alvo sugere outra fonte
 DESLOCAMENTO_MAX_PX = 1.0
 
+# modo treino do app (tools/gerar_treino.py)
+TREINO_DIR = ROOT / "data" / "treino"
+
 # Fase 8: fichas de submissao ao VSX (src/ficha_vsx.py, manual)
 VSX_DIR = ROOT / "data" / "vsx"
 

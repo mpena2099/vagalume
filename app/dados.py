@@ -53,6 +53,97 @@ def _sim(v) -> bool:
     return v is not None and not pd.isna(v) and bool(v)
 
 
+def _texto(v) -> str:
+    return "" if v is None or pd.isna(v) else str(v)
+
+
+def checklist(r: dict) -> list[dict]:
+    """O que olhar na candidata, em linguagem simples, com os numeros do caso."""
+    itens = []
+
+    d = r.get("deslocamento_px")
+    if d is None or pd.isna(d):
+        itens.append({"estado": "atencao", "titulo": "Sinal no alvo",
+                      "explicacao": "Não foi possível medir o pico do sinal no mapa de pixels."})
+    elif d > DESLOCAMENTO_MAX_PX:
+        itens.append({"estado": "problema", "titulo": "Sinal no alvo",
+                      "explicacao": f"O sinal é mais forte a {d:.1f} px do alvo (limite "
+                                    f"{DESLOCAMENTO_MAX_PX:.1f} px): pode vir de outra estrela."})
+    else:
+        itens.append({"estado": "ok", "titulo": "Sinal no alvo",
+                      "explicacao": f"O sinal é mais forte a {d:.1f} px do alvo, dentro do "
+                                    f"limite de {DESLOCAMENTO_MAX_PX:.1f} px."})
+
+    p = r.get("persistente")
+    setores = _texto(r.get("setores_extra")) or "nenhum"
+    periodos = _texto(r.get("periodos_extra")) or "sem período"
+    if p is None or pd.isna(p):
+        itens.append({"estado": "atencao", "titulo": "Repete em outros setores",
+                      "explicacao": "Sem outro setor para comparar: não dá para saber se o "
+                                    "sinal se repete."})
+    elif _sim(p):
+        itens.append({"estado": "ok", "titulo": "Repete em outros setores",
+                      "explicacao": f"O sinal se repete nos setores {setores}, com "
+                                    f"períodos {periodos} d."})
+    else:
+        itens.append({"estado": "problema", "titulo": "Repete em outros setores",
+                      "explicacao": f"O sinal não se repete: nos setores {setores} o "
+                                    f"período medido foi {periodos} d."})
+
+    n = r.get("n_ciclos")
+    if n is None or pd.isna(n) or n < 4:
+        texto = "sem medida" if n is None or pd.isna(n) else f"só {n:.1f} ciclos"
+        itens.append({"estado": "atencao", "titulo": "Ciclos no setor",
+                      "explicacao": f"Há {texto} no setor (o ideal é 4 ou mais): o período "
+                                    "fica menos preciso."})
+    else:
+        itens.append({"estado": "ok", "titulo": "Ciclos no setor",
+                      "explicacao": f"Há {n:.1f} ciclos no setor, suficientes para medir o "
+                                    "período."})
+
+    f = r.get("forca")
+    if f is None or pd.isna(f) or f < 5:
+        texto = "sem medida" if f is None or pd.isna(f) else f"{f:.1f} vezes o ruído"
+        itens.append({"estado": "atencao", "titulo": "Força do sinal",
+                      "explicacao": f"A amplitude é {texto} (o ideal é 5 vezes ou mais)."})
+    else:
+        itens.append({"estado": "ok", "titulo": "Força do sinal",
+                      "explicacao": f"A amplitude é {f:.1f} vezes o ruído: o sinal está bem "
+                                    "acima do ruído."})
+
+    if _sim(r.get("suspeito_blend")):
+        amp = r.get("amp_necessaria_min")
+        amp_txt = ("amplitude desconhecida" if amp is None or pd.isna(amp)
+                   else f"{amp * 100:.0f}%")
+        itens.append({"estado": "atencao", "titulo": "Vizinha brilhante (blend)",
+                      "explicacao": "Há uma vizinha brilhante a menos de 42\": ela precisaria "
+                                    f"variar {amp_txt} para gerar o sinal."})
+    else:
+        itens.append({"estado": "ok", "titulo": "Vizinha brilhante (blend)",
+                      "explicacao": "Nenhuma vizinha brilhante explica o sinal."})
+
+    if _sim(r.get("gaia_candidata")):
+        classe = r.get("gaia_classe")
+        classe_txt = f" ({classe})" if classe is not None and not pd.isna(classe) else ""
+        itens.append({"estado": "atencao", "titulo": "Já no Gaia",
+                      "explicacao": f"O Gaia DR3 já lista a estrela como candidata a variável"
+                                    f"{classe_txt}. Ainda dá para submeter, mas o mérito é menor."})
+    else:
+        itens.append({"estado": "ok", "titulo": "Já no Gaia",
+                      "explicacao": "Não está no Gaia DR3 como candidata a variável."})
+    return itens
+
+
+def sugestao(itens: list[dict]) -> str:
+    """Decisao que o pipeline sugere a partir do checklist."""
+    estados = {i["estado"] for i in itens}
+    if "problema" in estados:
+        return "descartado"
+    if "atencao" in estados:
+        return "duvida"
+    return "confirmado"
+
+
 def alertas(r: dict) -> list[str]:
     """Pontos que pesam contra a candidata, em linguagem de revisao."""
     saida = []

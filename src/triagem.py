@@ -154,6 +154,12 @@ def _figura(s, tempo, fluxo, campo, mapa, wcs, gaia, alvo_xy, pico, desloc) -> P
     TRIAGEM_DIR.mkdir(parents=True, exist_ok=True)
     caminho = TRIAGEM_DIR / f"{s.tic}.png"
     fig.savefig(caminho, dpi=100)
+    renderer = fig.canvas.get_renderer()
+    paineis = {"curva": ax[0, 0], "p": ax[0, 1], "2p": ax[0, 2],
+               "periodograma": ax[1, 0], "campo": ax[1, 1], "mapa": ax[1, 2]}
+    for nome, a in paineis.items():
+        bbox = a.get_tightbbox(renderer).transformed(fig.dpi_scale_trans.inverted())
+        fig.savefig(TRIAGEM_DIR / f"{s.tic}_{nome}.png", dpi=100, bbox_inches=bbox.padded(0.1))
     plt.close(fig)
     return caminho
 

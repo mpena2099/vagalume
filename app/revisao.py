@@ -25,6 +25,7 @@ ORDENACOES = {
 }
 ROTULOS = {"confirmado": "Confirmado", "duvida": "Dúvida", "descartado": "Descartado",
            "pendente": "Pendente"}
+ICONES = {"ok": "✅", "atencao": "⚠️", "problema": "❌"}
 
 st.set_page_config(page_title="Vagalume: revisão visual", layout="wide")
 
@@ -117,11 +118,35 @@ m[4].metric("Outros setores", _texto(r.get("setores_extra")) or "—",
 st.caption(f"Todos os sinais da estrela: {r.get('sinais_todos')}  ·  "
            f"RA {r['ra']:.5f}  Dec {r['dec']:+.5f}")
 
-for alerta in dados.alertas(r):
-    st.warning(alerta)
+itens = dados.checklist(r)
+for item in itens:
+    st.markdown(f"{ICONES[item['estado']]} **{item['titulo']}**: {item['explicacao']}")
+st.info(f"**Sugestão do pipeline: {ROTULOS[dados.sugestao(itens)]}.** "
+        "Vale só se a conferência humana abaixo passar.")
+st.markdown("**Na curva dobrada (P e 2P), os pontos caem uns sobre os outros "
+            "formando uma linha clara?**")
+st.caption("Olhe os painéis P e 2P: a linha preta deve repetir uma forma estável, "
+           "não uma nuvem borrada sem desenho.")
 
-if r.get("figura") and Path(r["figura"]).exists():
-    st.image(r["figura"], width="stretch")
+figura = Path(r["figura"]) if r.get("figura") else None
+if figura and figura.exists():
+    if figura.with_name(f"{tic}_p.png").exists():
+        cols = st.columns(3)
+        legendas = {
+            "p": "Dobrada em P: procure os ciclos sobrepostos formando uma linha clara.",
+            "2p": "Dobrada em 2P: mínimos de profundidades diferentes indicam período 2P.",
+            "mapa": "Sinal por pixel: o x vermelho (pico) deve cair sobre o + verde (alvo).",
+        }
+        for col, nome in zip(cols, ("p", "2p", "mapa")):
+            caminho = figura.with_name(f"{tic}_{nome}.png")
+            if caminho.exists():
+                col.image(caminho, caption=legendas[nome], width="stretch")
+            else:
+                col.caption("Painel indisponível.")
+        with st.expander("Figura completa (curva no tempo, periodograma, campo)"):
+            st.image(figura, width="stretch")
+    else:
+        st.image(figura, width="stretch")
 else:
     st.error(f"Sem figura para esta candidata: {r.get('erro') or 'rode a Fase 7 de novo'}")
 
