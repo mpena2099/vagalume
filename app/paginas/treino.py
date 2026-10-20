@@ -33,8 +33,9 @@ def comecar(treino: pd.DataFrame):
     st.session_state.treino_pos = 0
     st.session_state.treino_acertos = 0.0
     st.session_state.treino_total = 0
-    st.session_state.treino_resultado = None
-    st.session_state.treino_periodo = None
+    # respostas por posicao: voltar a um caso mostra a resposta dada, sem pontuar de novo
+    st.session_state.treino_respostas = {}
+    st.session_state.treino_periodos = {}
     st.session_state.treino_periodo_acertos = 0
     st.session_state.treino_periodo_total = 0
 
@@ -54,7 +55,7 @@ if treino.empty:
             "para gerar os casos.")
     st.stop()
 
-if "treino_ordem" not in st.session_state:
+if "treino_respostas" not in st.session_state:  # sessao nova ou de versao antiga do app
     comecar(treino)
 
 ordem = st.session_state.treino_ordem
@@ -65,12 +66,25 @@ estilo.cabecalho("Treino", (st.session_state.treino_acertos, feitos), "acertos")
 if pos >= len(ordem):
     st.success(f"Fim do treino: {st.session_state.treino_acertos:g} pontos em "
                f"{feitos} {'caso' if feitos == 1 else 'casos'}.")
-    if st.button("Começar de novo"):
+    fim = st.columns([1, 1, 6])
+    if fim[0].button("◀ Voltar", width="stretch"):
+        st.session_state.treino_pos -= 1
+        st.rerun()
+    if fim[1].button("Começar de novo", width="stretch"):
         comecar(treino)
         st.rerun()
     st.stop()
 
 caso = ordem.iloc[pos]
+
+
+def mover(delta: int):
+    st.session_state.treino_pos = max(0, min(len(ordem), st.session_state.treino_pos + delta))
+
+
+nav = st.columns([1, 1, 6])
+nav[0].button("◀ Anterior", on_click=mover, args=(-1,), disabled=pos == 0, width="stretch")
+nav[1].button("Próximo ▶", on_click=mover, args=(+1,), width="stretch")
 st.markdown(f"**Caso {pos + 1} de {len(ordem)}** &nbsp;·&nbsp; "
             f"TIC {int(caso['tic'])} &nbsp;·&nbsp; {caso['metodo'].upper()}",
             unsafe_allow_html=True)
@@ -82,9 +96,9 @@ r = json.loads(dados_json.read_text(encoding="utf-8")) if dados_json.exists() el
 guia.mostrar_guia(st, treino, aberto=pos == 0, excluir=caso["figura"])
 
 if _painel(figura, "p").exists():
-    cols = st.columns(3)
+    cols = st.columns(2)
     legendas = {k: f"**{titulo}.** {pergunta}" for k, (titulo, pergunta) in guia.ROTEIRO.items()}
-    for col, nome in zip(cols, ("p", "2p", "mapa")):
+    for col, nome in zip(cols, ("p", "mapa")):
         caminho = _painel(figura, nome)
         if caminho.exists():
             with col.container(key=f"figura_{nome}"):
@@ -113,7 +127,7 @@ with esquerda:
 
 with direita:
     with st.container(border=True):
-        res = st.session_state.treino_resultado
+        res = st.session_state.treino_respostas.get(pos)
         if res is None:
             st.markdown("**Qual é a sua decisão?**")
             escolha = None
@@ -129,7 +143,7 @@ with direita:
                 pontos = 1.0 if escolha == certa else (0.5 if escolha == "duvida" else 0.0)
                 st.session_state.treino_acertos += pontos
                 st.session_state.treino_total += 1
-                st.session_state.treino_resultado = {"escolha": escolha, "pontos": pontos}
+                st.session_state.treino_respostas[pos] = {"escolha": escolha, "pontos": pontos}
                 st.rerun()
         else:
             certa = caso["resposta"]
@@ -143,13 +157,17 @@ with direita:
             st.info(f"**Onde estava a pista.** {guia.pista(r, certa, caso['explicacao'])}")
             per_certo = guia.periodo_certo(caso["explicacao"], r) if certa == "confirmado" else None
             if per_certo:
-                st.markdown("**Segunda pergunta: o período certo é P ou 2P?** Olhe o painel 2P.")
-                escolha_p = st.session_state.get("treino_periodo")
+                st.markdown("**Segunda pergunta: o período certo é P ou 2P?** Compare a curva "
+                            "em P, acima, com a curva em 2P:")
+                if _painel(figura, "2p").exists():
+                    with st.container(key="figura_2p"):
+                        st.image(_painel(figura, "2p"), width="stretch")
+                escolha_p = st.session_state.treino_periodos.get(pos)
                 if escolha_p is None:
                     bp = st.columns(2)
                     for col, opcao in zip(bp, ("P", "2P")):
                         if col.button(opcao, key=f"per_{opcao}", width="stretch"):
-                            st.session_state.treino_periodo = opcao
+                            st.session_state.treino_periodos[pos] = opcao
                             st.session_state.treino_periodo_total += 1
                             st.session_state.treino_periodo_acertos += int(opcao == per_certo)
                             st.rerun()
@@ -161,7 +179,5 @@ with direita:
                 st.caption(f"Acertos de período: {st.session_state.treino_periodo_acertos} de "
                            f"{st.session_state.treino_periodo_total}")
             if st.button("Próximo ▶", type="primary"):
-                st.session_state.treino_periodo = None
                 st.session_state.treino_pos += 1
-                st.session_state.treino_resultado = None
                 st.rerun()

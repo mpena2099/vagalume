@@ -111,4 +111,4 @@ def checklist_html(itens: list[dict], sugestao: str) -> None:
         f'<div class="vl-pilula" style="color:{cor}; border:1px solid {cor}">'
         f'Sugestão do pipeline: {rotulo}</div>'
         f'<div class="vl-nota">A sugestão vale só se a conferência humana da curva dobrada '
-        f'(P e 2P) passar.</div></div>', unsafe_allow_html=True)
+        f'em P passar.</div></div>', unsafe_allow_html=True)

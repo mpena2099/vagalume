@@ -19,8 +19,8 @@ LEITURA = ("**Como ler as curvas dobradas.** Cada ponto laranja é uma medida de
            "com 0 no momento mais fraco. Período certo: os ciclos se encaixam e os pontos colam "
            "na linha. Período errado ou ruído: faixa espalhada e linha tremida.\n\n"
            "**O que decide.** Confirmar ou Descartar depende só dos painéis 1 (a curva em P "
-           "tem forma clara que se repete?) e 3 (o sinal sai da estrela alvo?). O painel 2 "
-           "vem depois, para escolher o período.")
+           "tem forma clara que se repete?) e 2 (o sinal sai da estrela alvo?). A curva em 2P "
+           "fica para depois de confirmar: serve só para escolher o período da ficha do VSX.")
 
 # painel -> (titulo, pergunta que o revisor responde olhando a imagem)
 ROTEIRO = {
@@ -28,17 +28,20 @@ ROTEIRO = {
           "Os pontos formam uma linha fina com desenho que se repete (um vale, uma onda), "
           "ou uma faixa larga e sem forma? Olhe também a escala do eixo vertical: de 0,994 "
           "a 1,006 é uma variação de 0,6%, perto do ruído."),
-    "2p": ("2. Curva dobrada em 2P: qual é o período? (não decide se é real)",
-           "Este painel só escolhe entre P e 2P para anotar o período; ter dois vales ou não "
-           "nunca é motivo para descartar. Dois vales de profundidades diferentes: binária, "
-           "período 2P. Um vale só e o resto plano (e, em P, pontos atravessando o vale em "
-           "1,00): binária com o segundo eclipse fraco demais, período 2P. A mesma forma "
-           "repetida duas vezes: em geral o período é P (pulsante ou mancha), salvo binária "
-           "de contato com vales largos e iguais."),
-    "mapa": ("3. Mapa do sinal por pixel",
+    "mapa": ("2. Mapa do sinal por pixel",
              "O x vermelho (onde o sinal é mais forte) está em cima do + verde (a estrela "
              "alvo)? Se está sobre outro círculo azul, o sinal vem da vizinha."),
 }
+
+# depois de confirmar: a curva em 2P so escolhe o periodo (P ou 2P) da ficha do VSX
+PERIODO = ("Depois de confirmar: o período (P ou 2P)",
+           "A curva em 2P não decide se a variação é real; serve para anotar o período certo "
+           "na ficha do VSX (a Fase 8 sugere sozinha, aqui você confere). Dois vales de "
+           "profundidades diferentes: binária, período 2P. Um vale só e o resto plano (e, em P, "
+           "pontos atravessando o vale em 1,00): binária com o segundo eclipse fraco demais, "
+           "período 2P. A mesma forma repetida duas vezes: em geral o período é P (pulsante ou "
+           "mancha), salvo binária de contato (vales largos e iguais, variação acima de ~10% e "
+           "2P acima de ~0,22 d).")
 
 # painel -> (o que ver no exemplo bom, o que ver no exemplo ruim)
 CONTRASTE = {
@@ -171,7 +174,10 @@ def mostrar_guia(st, treino: pd.DataFrame | None, aberto: bool, excluir: str | N
     with st.expander("O que procurar em cada painel (com exemplos)", expanded=aberto):
         st.markdown(LEITURA)
         figs = exemplos(treino, excluir) if treino is not None and not treino.empty else {}
-        for painel, (titulo, pergunta) in ROTEIRO.items():
+        secoes = [(painel, titulo, pergunta) for painel, (titulo, pergunta) in ROTEIRO.items()]
+        for painel, titulo, pergunta in secoes + [("2p", *PERIODO)]:
+            if painel == "2p":
+                st.divider()
             st.markdown(f"**{titulo}.** {pergunta}")
             bom, ruim = figs.get(painel, (None, None))
             if not (bom or ruim):
