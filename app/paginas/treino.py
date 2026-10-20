@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd
 import streamlit as st
 
-from app import dados, estilo
+from app import dados, estilo, guia
 from config import SQLITE_PATH
 
 ROTULOS = {"confirmado": "Confirmado", "duvida": "Dúvida", "descartado": "Descartado"}
@@ -73,13 +73,11 @@ figura = Path(caso["figura"])
 dados_json = figura.with_suffix(".json")
 r = json.loads(dados_json.read_text(encoding="utf-8")) if dados_json.exists() else {}
 
+guia.mostrar_guia(st, treino, aberto=pos == 0, excluir=caso["figura"])
+
 if _painel(figura, "p").exists():
     cols = st.columns(3)
-    legendas = {
-        "p": "Dobrada em P: procure os ciclos sobrepostos formando uma linha clara.",
-        "2p": "Dobrada em 2P: mínimos de profundidades diferentes indicam período 2P.",
-        "mapa": "Sinal por pixel: o x vermelho (pico) deve cair sobre o + verde (alvo).",
-    }
+    legendas = {k: f"**{titulo}.** {pergunta}" for k, (titulo, pergunta) in guia.ROTEIRO.items()}
     for col, nome in zip(cols, ("p", "2p", "mapa")):
         caminho = _painel(figura, nome)
         if caminho.exists():
@@ -122,7 +120,7 @@ with direita:
                 escolha = "descartado"
             if escolha:
                 certa = caso["resposta"]
-                pontos = 1.0 if escolha == certa else (0.5 if escolha == "dúvida" else 0.0)
+                pontos = 1.0 if escolha == certa else (0.5 if escolha == "duvida" else 0.0)
                 st.session_state.treino_acertos += pontos
                 st.session_state.treino_total += 1
                 st.session_state.treino_resultado = {"escolha": escolha, "pontos": pontos}
@@ -136,6 +134,7 @@ with direita:
             else:
                 st.error(f"Você errou: a resposta era {ROTULOS[certa]}.")
             st.markdown(f"**Resposta certa: {ROTULOS[certa]}.** {caso['explicacao']}")
+            st.info(f"**Onde estava a pista.** {guia.pista(r, certa, caso['explicacao'])}")
             if st.button("Próximo ▶", type="primary"):
                 st.session_state.treino_pos += 1
                 st.session_state.treino_resultado = None

@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd
 import streamlit as st
 
-from app import dados, estilo
+from app import dados, estilo, guia
 from config import SQLITE_PATH
 
 ORDENACOES = {
@@ -100,15 +100,18 @@ nav[2].markdown(
     f"&nbsp;·&nbsp; RA {r['ra']:.5f} &nbsp;·&nbsp; Dec {r['dec']:+.5f}",
     unsafe_allow_html=True)
 
+try:
+    with conectar() as conn:
+        _treino = pd.read_sql("SELECT * FROM treino", conn)
+except Exception:
+    _treino = None
+guia.mostrar_guia(st, _treino, aberto=False)
+
 figura = Path(r["figura"]) if r.get("figura") else None
 if figura and figura.exists():
     if figura.with_name(f"{tic}_p.png").exists():
         cols = st.columns(3)
-        legendas = {
-            "p": "Dobrada em P: procure os ciclos sobrepostos formando uma linha clara.",
-            "2p": "Dobrada em 2P: mínimos de profundidades diferentes indicam período 2P.",
-            "mapa": "Sinal por pixel: o x vermelho (pico) deve cair sobre o + verde (alvo).",
-        }
+        legendas = {k: f"**{titulo}.** {pergunta}" for k, (titulo, pergunta) in guia.ROTEIRO.items()}
         for col, nome in zip(cols, ("p", "2p", "mapa")):
             caminho = figura.with_name(f"{tic}_{nome}.png")
             if caminho.exists():

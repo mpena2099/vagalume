@@ -232,6 +232,15 @@ def test_mapas_triagem():
     assert abs(prof[0] - 0.1) < 1e-9 and prof[1] == 0
 
 
+def test_pista_treino():
+    from app.guia import pista
+    assert "mapa" in pista({"deslocamento_px": 5.0}, "descartado", "vizinha")
+    assert "nave" in pista({"deslocamento_px": 0.2}, "descartado", "sistemático do TESS")
+    assert "faixa larga" in pista({"forca": 1.5}, "descartado", "mal passa do ruído")
+    assert "engana" in pista({"deslocamento_px": 3.0}, "confirmado", "VSX já lista")
+    assert "linha fina" in pista({"deslocamento_px": 0.3, "forca": 20}, "confirmado", "VSX")
+
+
 if __name__ == "__main__":
     for nome, fn in list(globals().items()):
         if nome.startswith("test_"):
