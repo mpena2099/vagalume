@@ -5,14 +5,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import astropy.units as u
+import httpx
 import numpy as np
 import pandas as pd
 from astropy.coordinates import SkyCoord
 from astroquery.simbad import Simbad
 from astroquery.vizier import Vizier
 
-from config import (CATALOGOS_GAIA, CATALOGOS_VIZIER, PERIODO_MATCH_TOL_REL, RAIO_MATCH_ARCSEC,
-                    RAIO_MESMA_ESTRELA_ARCSEC, SIMBAD_VARIAVEIS, SQLITE_PATH, TOI_PATH, TOI_URL)
+from config import (CATALOGOS_GAIA, CATALOGOS_VIZIER, HTTP_TIMEOUT_S, PERIODO_MATCH_TOL_REL,
+                    RAIO_MATCH_ARCSEC,
+                    RAIO_MESMA_ESTRELA_ARCSEC, SIMBAD_VARIAVEIS, SQLITE_PATH, TOI_PATH, TOI_URL,
+                    WANG_DIR, WANG_URLS)
 from src.periodo import comparar_periodo
 from src.util import retry
 
@@ -62,6 +65,37 @@ def _toi() -> pd.DataFrame:
     return pd.read_csv(TOI_PATH)
 
 
+def _baixar_wang(url: str, destino: Path):
+    # o servidor recusa o user agent padrao do Python
+    resp = httpx.get(url, headers={"User-Agent": "Mozilla/5.0"}, follow_redirects=True,
+                     timeout=HTTP_TIMEOUT_S)
+    resp.raise_for_status()
+    destino.write_bytes(resp.content)
+
+
+def _wang() -> pd.DataFrame:
+    WANG_DIR.mkdir(parents=True, exist_ok=True)
+    tabelas = []
+    for nome, url in WANG_URLS.items():
+        caminho = WANG_DIR / f"{nome}.csv"
+        if not caminho.exists():
+            retry(lambda: _baixar_wang(url, caminho), "China-VO")
+        tabelas.append(pd.read_csv(caminho, encoding="utf-8-sig",
+                                   usecols=["name", "VI_class", "P", "RA", "DEC"]))
+    return pd.concat(tabelas, ignore_index=True)
+
+
+def _consultar_wang(alvo: SkyCoord, wang: pd.DataFrame) -> list[dict]:
+    perto = wang[(np.abs(wang["DEC"] - alvo.dec.deg) < RAIO_MATCH_ARCSEC / 3600)]
+    if perto.empty:
+        return []
+    dist = alvo.separation(SkyCoord(perto["RA"].values, perto["DEC"].values, unit="deg")).arcsec
+    return [{"catalogo": "Wang2025", "nome": f"TIC {w.name} ({w.VI_class})",
+             "dist_arcsec": float(d), "periodo": float(w.P) if pd.notna(w.P) else None,
+             "gaia": False, "classe": None}
+            for w, d in zip(perto.itertuples(), dist) if d <= RAIO_MATCH_ARCSEC]
+
+
 def _consultar_vizier(alvo: SkyCoord, raio_arcsec: float) -> list[dict]:
     catalogos = list(CATALOGOS_VIZIER) + list(CATALOGOS_GAIA)
     # _RAJ2000/_DEJ2000: posicao calculada pelo VizieR, para catalogo sem coluna de RA/Dec
@@ -90,10 +124,11 @@ def _consultar_vizier(alvo: SkyCoord, raio_arcsec: float) -> list[dict]:
     return matches
 
 
-def _consultar(tic: int, ra: float, dec: float, toi: pd.DataFrame) -> list[dict]:
+def _consultar(tic: int, ra: float, dec: float, toi: pd.DataFrame,
+               wang: pd.DataFrame) -> list[dict]:
     alvo = SkyCoord(ra, dec, unit="deg")
     raio = RAIO_MATCH_ARCSEC * u.arcsec
-    matches = _consultar_vizier(alvo, RAIO_MATCH_ARCSEC)
+    matches = _consultar_vizier(alvo, RAIO_MATCH_ARCSEC) + _consultar_wang(alvo, wang)
 
     simbad = Simbad()
     simbad.add_votable_fields("otype")
@@ -123,10 +158,11 @@ def run():
     estrelas = sinais.drop_duplicates("tic")
     print(f"  {len(sinais)} sinais em {len(estrelas)} estrelas, raio {RAIO_MATCH_ARCSEC}\"")
     toi = _toi()
+    wang = _wang()
 
     linhas = []
     for i, e in enumerate(estrelas.itertuples(), 1):
-        matches = _consultar(int(e.tic), e.ra, e.dec, toi)
+        matches = _consultar(int(e.tic), e.ra, e.dec, toi, wang)
         for s in sinais[sinais["tic"] == e.tic].to_dict("records"):
             linhas.append({**s, **classificar(matches, s["periodo_d"])})
         print(f"  {i}/{len(estrelas)} TIC {e.tic}: {linhas[-1]['status']} "

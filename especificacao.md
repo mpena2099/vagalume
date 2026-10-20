@@ -102,6 +102,7 @@ Cone search de raio `RAIO_MATCH_ARCSEC = 30` (o pixel do TESS tem 21"; uma vari�
 | ATLAS variáveis candidatas (Heinze et al. 2018) | VizieR `J/AJ/156/241` | 4,7 milhões de candidatas do céu ao norte de Dec -30° |
 | Variáveis periódicas do TESS, SPB do TESS, rotação do TIC | VizieR `J/ApJS/276/57`, `J/ApJS/268/16`, `J/AJ/155/39/table6` | Catálogos recentes que o VSX ainda não absorveu |
 | Gaia DR2 grande amplitude | VizieR `J/A+A/648/A44` | Variáveis de grande amplitude, sem período |
+| Variáveis do TESS 2 min (Wang et al. 2025, ApJ 986) | CSV do China-VO PaperData (DOI 10.12149/101519), fora do VizieR | 31 mil variáveis classificadas por random forest e conferidas a olho, 14 mil delas novas. Só cobre estrelas com cadência de 2 min: 2 dos 500 alvos do setor 55 |
 | TOI (candidatos a planeta) | CSV do ExoFOP | Sinais já investigados pela missão TESS |
 | SIMBAD | `astroquery.simbad` | Literatura em geral |
 

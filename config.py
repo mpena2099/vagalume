@@ -65,6 +65,14 @@ CATALOGOS_VIZIER = {
     "J/AJ/155/39/table6": ("TIC-rotacao", "Prot"),
     "J/A+A/648/A44": ("Gaia-grande-amp", None),
 }
+# Wang+2025 (ApJ 986): 31 mil variaveis do TESS 2 min classificadas por random forest e
+# conferidas a olho. Fica no China-VO, fora do VizieR; table2 e o catalogo, table3 as
+# estrelas com tipo diferente por setor
+WANG_URLS = {
+    "table2": "https://nadc.china-vo.org/res/file_upload/download?id=48450",
+    "table3": "https://nadc.china-vo.org/res/file_upload/download?id=48451",
+}
+WANG_DIR = ROOT / "data" / "wang2025"
 # Gaia DR3 nao bloqueia submissao ao VSX, so reduz o merito
 CATALOGOS_GAIA = {
     "I/358/vclassre": "Gaia-classe",
