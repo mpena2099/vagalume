@@ -10,6 +10,15 @@ import pandas as pd
 
 from config import DESLOCAMENTO_MAX_PX
 
+# Como ler a curva dobrada, mostrado no topo do guia
+LEITURA = ("**Como ler as curvas dobradas.** Cada ponto laranja é uma medida de brilho do TESS "
+           "(uma a cada 200 s, por umas 4 semanas). Dobrar é colocar cada medida na posição do "
+           "ciclo em que ela caiu (fase, de 0 a 1), empilhando todos os ciclos. A linha preta é a "
+           "mediana dos pontos em 50 fatias: a forma média da variação. Eixo vertical: brilho "
+           "relativo (1,00 é o normal da estrela, 0,95 é 5% mais fraca). Eixo horizontal: fase, "
+           "com 0 no momento mais fraco. Período certo: os ciclos se encaixam e os pontos colam "
+           "na linha. Período errado ou ruído: faixa espalhada e linha tremida.")
+
 # painel -> (titulo, pergunta que o revisor responde olhando a imagem)
 ROTEIRO = {
     "p": ("1. Curva dobrada em P",
@@ -100,6 +109,7 @@ def pista(r: dict, resposta: str, explicacao: str) -> str:
 def mostrar_guia(st, treino: pd.DataFrame | None, aberto: bool, excluir: str | None = None) -> None:
     """Expander com o roteiro e, se houver treino, os exemplos bom x ruim de cada painel."""
     with st.expander("O que procurar em cada painel (com exemplos)", expanded=aberto):
+        st.markdown(LEITURA)
         figs = exemplos(treino, excluir) if treino is not None and not treino.empty else {}
         for painel, (titulo, pergunta) in ROTEIRO.items():
             st.markdown(f"**{titulo}.** {pergunta}")
