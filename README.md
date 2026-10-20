@@ -46,7 +46,7 @@ O envio ao VSX é manual (não há API): copie os campos da ficha para o formul�
 
 ## Estado
 
-As sete fases estão implementadas. A Fase 1 redescobre WASP-18 b, uma binária eclipsante destacada e uma de contato, com o período dentro de 0,1% da referência. A primeira varredura, no setor 55 (Cygnus, plano da Via Láctea), processou 500 estrelas: 39 com sinal periódico, 13 sem variável catalogada a menos de 30" e 9 candidatas depois da checagem de vizinhas e da repetição em outros setores. Elas aguardam a revisão visual. Detalhes técnicos, cortes, catálogos e riscos em [`especificacao.md`](especificacao.md).
+As oito fases estão implementadas (a 8, ficha do VSX, roda à mão depois da revisão). A Fase 1 redescobre WASP-18 b, uma binária eclipsante destacada e uma de contato, com o período dentro de 0,1% da referência. A primeira varredura, no setor 55 (Cygnus, plano da Via Láctea), processou 500 estrelas: 39 com sinal periódico, 13 sem variável catalogada a menos de 30" e 9 candidatas depois da checagem de vizinhas e da repetição em outros setores. Elas aguardam a revisão visual. Detalhes técnicos, cortes, catálogos e riscos em [`especificacao.md`](especificacao.md).
 
 ## Uso
 
@@ -64,6 +64,76 @@ python src/ficha_vsx.py         # Fase 8: fichas do VSX das confirmadas (--duvid
 As decisões da revisão ficam na tabela `revisao_humana`, que o pipeline nunca recria.
 
 As curvas baixadas ficam em cache em `data/curvas/` e as figuras de triagem em `data/triagem/`.
+
+## Revisão visual: como classificar
+
+O app mostra, para cada candidata, os números principais, os alertas do pipeline (vizinha brilhante, poucos ciclos, sem outro setor para comparar), links para VSX e SIMBAD e uma figura com seis painéis:
+
+| Painel | O que mostra | O que procurar |
+|---|---|---|
+| Curva de luz | O brilho ao longo do setor (~27 dias) | Variação que se repete o setor inteiro, sem saltos nas bordas das lacunas |
+| Dobrada em P | Os ciclos sobrepostos no período medido; a linha preta é a mediana | Pontos caindo uns sobre os outros, com forma clara |
+| Dobrada em 2P | O mesmo com o dobro do período | Se aparecem dois mínimos diferentes, o período real é 2P |
+| Periodograma | A força de cada período candidato; a linha vermelha é o escolhido | Um pico alto e isolado |
+| Campo TESS | Os pixels em volta (cada um tem 21"); + verde é o alvo, círculos são fontes Gaia | Estrelas vizinhas brilhantes dentro de 2 pixels |
+| Sinal por pixel | Em que pixel a variação é mais forte; x vermelho é o pico | O x sobre o + (a menos de 1 pixel) |
+
+**Como decidir**
+
+| O que você vê | Decisão |
+|---|---|
+| Curva dobrada limpa, pico do sinal sobre o alvo, periodograma com um pico isolado | **Confirmar** |
+| Pico do sinal em outro pixel, sobre outra estrela | **Descartar** (o sinal é da vizinha) |
+| Curva dobrada borrada, sem forma, ou periodograma com vários picos do mesmo tamanho | **Descartar** |
+| Período perto de 1 d, 13,7 d, 6,85 d ou 4,57 d, ou saltos nas bordas das lacunas | **Descartar** (sistemático do TESS) |
+| VSX ou SIMBAD mostram uma variável já catalogada com esse período a até ~2' | **Descartar** (já conhecida) |
+| Sinal real, mas com só 2 ou 3 eventos no setor, ou com alerta de vizinha brilhante | **Dúvida** |
+
+**P ou 2P, e o tipo.** Para a ficha do VSX importam o período certo e o tipo:
+- **EA** (binária destacada): eclipses estreitos e brilho plano entre eles.
+- **EB**: brilho variando o tempo todo e mínimos de profundidades diferentes. O período real é o que mostra os dois mínimos (em geral 2P).
+- **EW** (binária de contato): variação contínua e mínimos quase iguais. Aqui está a armadilha: em 2P os dois mínimos são iguais e parece que P basta, mas o período real é 2P. Amplitude grande (acima de ~10%) e P/2 acima de ~0,22 d favorecem EW.
+- **Pulsante ou rotação**: um ciclo limpo por período; em 2P aparecem dois ciclos idênticos. Abaixo de ~0,2 d, só pode ser pulsante (nenhuma binária de contato gira tão rápido). Rotação (manchas) costuma mudar de forma de um setor para outro.
+
+A Fase 8 sugere P ou 2P e o tipo automaticamente, mas a palavra final é sua. **Confirmar** não é descoberta: quer dizer que passa no olho. **Descartar** não apaga nada: a decisão fica gravada com a nota e dá para rever no filtro "Situação".
+
+**Casos de referência.** Todos são variáveis já catalogadas ou sinais que o próprio pipeline descartou (gerados por `python -u tools/gerar_referencias.py`).
+
+*Confirmar: binária de contato, período real 2P*
+
+![Binária de contato TIC 64796843](docs/img/ref_confirmar_eb_2p.jpg)
+
+TIC 64796843 (NSVS 5748012, no VSX com P = 0,9117 d). O LS mede 0,4559 d, metade do período real. Em P a curva parece uma senoide; em 2P aparecem dois mínimos quase iguais. A amplitude de 22% é grande demais para manchas ou pulsação comum nesse período: é binária de contato, período 2P. Pico do sinal a 0,4 px do alvo.
+
+*Confirmar: binária destacada (EA)*
+
+![Binária eclipsante TIC 64412402](docs/img/ref_confirmar_ea.jpg)
+
+TIC 64412402 (no VSX com P = 5,3754 d). Cinco eclipses de ~20% no setor, brilho plano entre eles. Em 2P os dois eclipses têm quase a mesma profundidade, então o VSX adota P; se as profundidades fossem diferentes, o período seria 2P. O periodograma mostra uma escada de harmônicos, típica de eclipse estreito: é por isso que o pipeline usa o BLS nesses casos.
+
+*Confirmar: pulsante*
+
+![Pulsante TIC 17453401](docs/img/ref_confirmar_pulsante.jpg)
+
+TIC 17453401 (no VSX com P = 0,11086 d). Senoide limpa de 1,2%, periodograma com um único pico. Em 2P aparecem dois ciclos idênticos, e com 0,11 d nenhuma binária de contato cabe: é pulsante (provável delta Scuti), período P.
+
+*Dúvida: poucos eventos*
+
+![Poucos eclipses TIC 65121604](docs/img/ref_duvida_poucos_ciclos.jpg)
+
+TIC 65121604. Só dois eclipses de ~2% no setor, a 18 dias um do outro. O BLS escolheu 8,94 d, mas com dois eventos o período pode ser 17,9 d ou outra fração. O periodograma não ajuda (ruído). O sinal parece real e está no alvo, mas o período não está fechado: **dúvida** até haver outro setor.
+
+*Descartar: o sinal é de uma vizinha*
+
+![Sinal de vizinha TIC 63458827](docs/img/ref_descartar_vizinha.jpg)
+
+TIC 63458827. A curva dobrada é bonita (binária com mínimos iguais em 2P), mas o painel do sinal por pixel mostra o pico a 3,9 px do alvo, sobre outra estrela. A Fase 6 achou essa vizinha catalogada como variável com o mesmo período a 86". O alvo só recebe a luz dela.
+
+*Descartar: não se repete e vem de outra estrela*
+
+![Sinal fraco TIC 17128693](docs/img/ref_descartar_nao_persiste.jpg)
+
+TIC 17128693. Amplitude de 0,23%, curva dobrada borrada, periodograma com vários picos parecidos. Nos outros setores o período mudou (2,49 e 2,24 d), e o pico do sinal está a 4,9 px do alvo, numa estrela brilhante do canto do recorte. Dois motivos para descartar.
 
 ## Dados e créditos
 
