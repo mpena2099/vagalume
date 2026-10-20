@@ -49,11 +49,13 @@ MOTIVOS = {
 # contra o ruido e poucos ciclos no setor
 AMOSTRA_FASE4 = {"sistematico": 12, "amplitude": 6, "ciclos": 6}
 MOTIVOS_FASE4 = {
-    "sistematico": "O período cai sobre um sistemático do TESS (1 d, 13,7 d ou harmônicos): "
-                   "o sinal vem da nave, não da estrela.",
+    "sistematico": "O período cai sobre um período da própria nave (1 d, 13,7 d ou harmônicos). "
+                   "Pode até haver variação real, mas com este dado não dá para separá-la da "
+                   "nave, nem submeter ao VSX.",
     "amplitude": "A amplitude mal passa do ruído ponto a ponto: a curva dobrada é ruído "
                  "organizado pelo próprio ajuste.",
-    "ciclos": "Menos de 3 ciclos no setor: dois ou três eventos isolados não definem um período.",
+    "ciclos": "Menos de 3 ciclos no setor: dois ou três eventos isolados não confirmam um "
+              "período. Pode ser real, mas sem repetição não há o que submeter.",
 }
 SEMENTE = 42
 
@@ -110,6 +112,11 @@ def _dados(r, extra: dict) -> dict:
     return dados
 
 
+def _variaveis_catalogadas(con) -> set[int]:
+    return {int(tic) for (tic,) in con.execute(
+        "SELECT DISTINCT tic FROM sinais_fase5 WHERE status = 'conhecido'")}
+
+
 def _resposta_final(resposta: str, dados: dict) -> str:
     """Variavel catalogada com o pico do sinal fora do alvo vira 'ambiguo' (fica fora do quiz).
 
@@ -134,6 +141,16 @@ def main():
             if _resposta_final("confirmado", dados) == "ambiguo":
                 con.execute("UPDATE treino SET resposta = 'ambiguo' WHERE tic = ? AND metodo = ?",
                             (tic, metodo))
+        # rejeitado da Fase 4 numa estrela que e variavel catalogada: a figura mostra a
+        # variacao real dobrada num periodo errado, entao "descartar" seco ensinaria errado
+        variaveis = _variaveis_catalogadas(con)
+        for (motivo_txt,) in [(v,) for v in MOTIVOS_FASE4.values()]:
+            for tic, metodo in con.execute(
+                    "SELECT tic, metodo FROM treino WHERE resposta = 'descartado' AND explicacao = ?",
+                    (motivo_txt,)).fetchall():
+                if int(tic) in variaveis:
+                    con.execute("UPDATE treino SET resposta = 'ambiguo' WHERE tic = ? AND metodo = ?",
+                                (tic, metodo))
         con.commit()
         casos = _casos(con)
         novos = 0
@@ -153,6 +170,8 @@ def main():
             destino.with_suffix(".json").write_text(
                 json.dumps(numeros, ensure_ascii=False), encoding="utf-8")
             resposta = _resposta_final(resposta, numeros)
+            if explicacao in MOTIVOS_FASE4.values() and tic in variaveis:
+                resposta = "ambiguo"
             con.execute("INSERT INTO treino VALUES (?, ?, ?, ?, ?)",
                         (tic, metodo, str(destino), resposta, explicacao))
             con.commit()

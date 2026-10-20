@@ -73,29 +73,41 @@ def exemplos(treino: pd.DataFrame, excluir: str | None = None) -> dict[str, tupl
         "p": (topo(bons, "forca", True), topo(ruido if not ruido.empty else ruins, "forca", False)),
         "2p": (topo(dobro if not dobro.empty else bons, "forca", True),
                topo(ruido if not ruido.empty else ruins, "forca", False)),
-        "mapa": (topo(bons, "deslocamento_px", False), topo(ruins, "deslocamento_px", True)),
+        # ruim do mapa: so descarte por vizinha (em ruido o pico longe nao e outra estrela)
+        "mapa": (topo(bons, "deslocamento_px", False),
+                 topo(ruins[ruins["explicacao"].str.contains("vizinha", na=False)],
+                      "deslocamento_px", True)),
     }
 
 
 def pista(r: dict, resposta: str, explicacao: str) -> str:
     """Em qual painel estava a resposta deste caso, com os numeros dele."""
     d, forca = r.get("deslocamento_px"), r.get("forca")
-    if d is not None and d > DESLOCAMENTO_MAX_PX and resposta == "descartado":
-        return (f"Olhe o mapa: o x vermelho está a {d:.1f} px do + verde. Só isso já indica "
-                "que o sinal vem de outra estrela.")
-    if "sistemático" in explicacao:
+    # sem sinal real o pico do mapa cai num pixel qualquer: o mapa so e a pista quando o
+    # motivo do descarte e a vizinha (ou quando nao ha outro motivo)
+    longe = d is not None and d > DESLOCAMENTO_MAX_PX
+    if "própria nave" in explicacao:
         return ("Olhe o período: ele cai sobre um período da própria nave (1 d, 13,7 d ou "
-                "metades). A curva pode até ter forma, mas a origem não é a estrela.")
-    if "ruído" in explicacao or (forca is not None and forca < 3):
+                "metades). A curva pode até ter forma, mas não dá para provar que vem da estrela.")
+    if "ruído" in explicacao:
         f = "" if forca is None else f" (amplitude {forca:.1f} vezes o ruído)"
+        extra = (" O mapa também não aponta o alvo: sem sinal, o pico cai em qualquer pixel."
+                 if longe else "")
         return (f"Olhe a curva dobrada em P: faixa larga sem desenho{f}. Repare também na "
-                "escala vertical, muito estreita.")
+                f"escala vertical, muito estreita.{extra}")
     if "ciclos" in explicacao:
         return ("Olhe a curva no tempo (figura completa): só dois ou três eventos isolados. "
-                "Sem repetição não há período confiável.")
+                "Sem repetição não há período confiável para submeter.")
     if "não se repete" in explicacao:
-        return ("Este caso só se resolve com os outros setores: no setor mostrado a curva "
-                "parece boa, mas o período não volta nos setores seguintes.")
+        extra = (f" O mapa ajuda: o x vermelho está a {d:.1f} px do + verde." if longe else "")
+        return ("O motivo está nos outros setores: o período não volta neles, então o sinal "
+                f"não é estável.{extra}")
+    if "vizinha" in explicacao:
+        txt = (f"Olhe o mapa: o x vermelho está a {d:.1f} px do + verde, fora do alvo."
+               if longe else "Olhe os círculos azuis no mapa: há uma vizinha perto do alvo.")
+        return txt + " Uma variável catalogada ali tem o mesmo período."
+    if longe and resposta == "descartado":
+        return f"Olhe o mapa: o x vermelho está a {d:.1f} px do + verde, fora do alvo."
     if resposta == "confirmado":
         return ("Repare na curva em P: linha fina e com forma, x vermelho sobre o + verde. "
                 "É o aspecto de uma variável real; compare com a próxima candidata.")
