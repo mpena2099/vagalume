@@ -26,11 +26,17 @@ def _texto(v, formato: str) -> str:
 
 
 def comecar(treino: pd.DataFrame):
-    st.session_state.treino_ordem = treino.sample(frac=1, random_state=42).reset_index(drop=True)
+    # mesmo numero de casos por resposta: senao responder sempre a classe maior pontua bem
+    n = int(treino["resposta"].value_counts().min())
+    equilibrado = treino.groupby("resposta", group_keys=False).sample(n=n, random_state=42)
+    st.session_state.treino_ordem = equilibrado.sample(frac=1, random_state=42).reset_index(drop=True)
     st.session_state.treino_pos = 0
     st.session_state.treino_acertos = 0.0
     st.session_state.treino_total = 0
     st.session_state.treino_resultado = None
+    st.session_state.treino_periodo = None
+    st.session_state.treino_periodo_acertos = 0
+    st.session_state.treino_periodo_total = 0
 
 
 try:
@@ -135,7 +141,27 @@ with direita:
                 st.error(f"Você errou: a resposta era {ROTULOS[certa]}.")
             st.markdown(f"**Resposta certa: {ROTULOS[certa]}.** {caso['explicacao']}")
             st.info(f"**Onde estava a pista.** {guia.pista(r, certa, caso['explicacao'])}")
+            per_certo = guia.periodo_certo(caso["explicacao"], r) if certa == "confirmado" else None
+            if per_certo:
+                st.markdown("**Segunda pergunta: o período certo é P ou 2P?** Olhe o painel 2P.")
+                escolha_p = st.session_state.get("treino_periodo")
+                if escolha_p is None:
+                    bp = st.columns(2)
+                    for col, opcao in zip(bp, ("P", "2P")):
+                        if col.button(opcao, key=f"per_{opcao}", width="stretch"):
+                            st.session_state.treino_periodo = opcao
+                            st.session_state.treino_periodo_total += 1
+                            st.session_state.treino_periodo_acertos += int(opcao == per_certo)
+                            st.rerun()
+                else:
+                    (st.success if escolha_p == per_certo else st.error)(
+                        f"Período: você marcou {escolha_p}, o certo é {per_certo}.")
+                    st.caption(guia.explicar_periodo(per_certo, r))
+            if st.session_state.get("treino_periodo_total"):
+                st.caption(f"Acertos de período: {st.session_state.treino_periodo_acertos} de "
+                           f"{st.session_state.treino_periodo_total}")
             if st.button("Próximo ▶", type="primary"):
+                st.session_state.treino_periodo = None
                 st.session_state.treino_pos += 1
                 st.session_state.treino_resultado = None
                 st.rerun()

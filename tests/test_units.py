@@ -232,6 +232,16 @@ def test_mapas_triagem():
     assert abs(prof[0] - 0.1) < 1e-9 and prof[1] == 0
 
 
+def test_periodo_certo():
+    from app.guia import periodo_certo
+    assert periodo_certo("VSX já lista X com período 5.3754 d, razão 0.50 com o período medido") == "2P"
+    assert periodo_certo("VSX já lista X com período 0.1109 d, razão 1.00 com o período medido") == "P"
+    assert periodo_certo("VSX já lista esta estrela como variável, sem período no catálogo") is None
+    assert periodo_certo("VSX já lista X com período 5.3 d, razão 1.00 com o período medido",
+                         {"amplitude": 0.19}) is None
+    assert periodo_certo("TIC-rotacao já lista X com período 1.3482 d, razão 1.00 com o período medido") is None
+
+
 def test_pista_treino():
     from app.guia import pista
     assert "mapa" in pista({"deslocamento_px": 5.0}, "descartado", "o sinal vem da vizinha")
@@ -239,6 +249,7 @@ def test_pista_treino():
     assert "qualquer pixel" in ruido and "outra estrela" not in ruido
     assert "nave" in pista({"deslocamento_px": 0.2}, "descartado", "período da própria nave")
     assert "faixa larga" in pista({"forca": 1.5}, "descartado", "mal passa do ruído")
+    assert "2P" in pista({"deslocamento_px": 0.3}, "confirmado", "VSX já lista X com período 5 d, razão 0.50 com o período medido")
     assert "linha fina" in pista({"deslocamento_px": 0.3, "forca": 20}, "confirmado", "VSX")
 
 

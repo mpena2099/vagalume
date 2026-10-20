@@ -117,16 +117,26 @@ def _variaveis_catalogadas(con) -> set[int]:
         "SELECT DISTINCT tic FROM sinais_fase5 WHERE status = 'conhecido'")}
 
 
-def _resposta_final(resposta: str, dados: dict) -> str:
-    """Variavel catalogada com o pico do sinal fora do alvo vira 'ambiguo' (fica fora do quiz).
+def _resposta_final(resposta: str, dados: dict, explicacao: str) -> str:
+    """'confirmado' so com evidencia direta; o resto vira 'ambiguo' (fica fora do quiz).
 
-    O catalogo diz que ha uma variavel ali, mas o mapa diz que o sinal do TESS vem de outro
-    pixel: provavelmente da vizinha. Com 'confirmado', o quiz ensinava a ignorar o mapa.
+    Variavel catalogada nao basta: o sinal medido tem de sair do alvo (pico a ate
+    DESLOCAMENTO_MAX_PX) e bater com o catalogo (periodo compativel, P ou 2P). Catalogo
+    sem periodo vale so com sinal claro (4 ciclos ou mais e forca 5 ou mais). Sem isso o
+    quiz ensinava a confirmar sinal de vizinha ou de outro periodo.
     """
+    if resposta != "confirmado":
+        return resposta
     d = dados.get("deslocamento_px")
-    if resposta == "confirmado" and d is not None and d > DESLOCAMENTO_MAX_PX:
+    if d is None or d > DESLOCAMENTO_MAX_PX:
         return "ambiguo"
-    return resposta
+    if "razão" in explicacao:
+        return resposta
+    sem_periodo = "sem período no catálogo" in explicacao
+    ciclos, forca = dados.get("n_ciclos") or 0, dados.get("forca") or 0
+    if sem_periodo and ciclos >= 4 and forca >= 5:
+        return resposta
+    return "ambiguo"
 
 
 def main():
@@ -134,11 +144,12 @@ def main():
     with sqlite3.connect(SQLITE_PATH) as con:
         con.execute(_SCHEMA)
         feitos = {(int(tic), metodo) for tic, metodo in con.execute("SELECT tic, metodo FROM treino")}
-        for tic, metodo, figura in con.execute(
-                "SELECT tic, metodo, figura FROM treino WHERE resposta = 'confirmado'").fetchall():
+        for tic, metodo, figura, explicacao in con.execute(
+                "SELECT tic, metodo, figura, explicacao FROM treino "
+                "WHERE resposta = 'confirmado'").fetchall():
             arquivo = Path(figura).with_suffix(".json")
             dados = json.loads(arquivo.read_text(encoding="utf-8")) if arquivo.exists() else {}
-            if _resposta_final("confirmado", dados) == "ambiguo":
+            if _resposta_final("confirmado", dados, explicacao) == "ambiguo":
                 con.execute("UPDATE treino SET resposta = 'ambiguo' WHERE tic = ? AND metodo = ?",
                             (tic, metodo))
         # rejeitado da Fase 4 numa estrela que e variavel catalogada: a figura mostra a
@@ -169,7 +180,7 @@ def main():
             numeros = _dados(r, extra)
             destino.with_suffix(".json").write_text(
                 json.dumps(numeros, ensure_ascii=False), encoding="utf-8")
-            resposta = _resposta_final(resposta, numeros)
+            resposta = _resposta_final(resposta, numeros, explicacao)
             if explicacao in MOTIVOS_FASE4.values() and tic in variaveis:
                 resposta = "ambiguo"
             con.execute("INSERT INTO treino VALUES (?, ?, ?, ?, ?)",

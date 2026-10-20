@@ -17,7 +17,10 @@ LEITURA = ("**Como ler as curvas dobradas.** Cada ponto laranja é uma medida de
            "mediana dos pontos em 50 fatias: a forma média da variação. Eixo vertical: brilho "
            "relativo (1,00 é o normal da estrela, 0,95 é 5% mais fraca). Eixo horizontal: fase, "
            "com 0 no momento mais fraco. Período certo: os ciclos se encaixam e os pontos colam "
-           "na linha. Período errado ou ruído: faixa espalhada e linha tremida.")
+           "na linha. Período errado ou ruído: faixa espalhada e linha tremida.\n\n"
+           "**O que decide.** Confirmar ou Descartar depende só dos painéis 1 (a curva em P "
+           "tem forma clara que se repete?) e 3 (o sinal sai da estrela alvo?). O painel 2 "
+           "vem depois, para escolher o período.")
 
 # painel -> (titulo, pergunta que o revisor responde olhando a imagem)
 ROTEIRO = {
@@ -25,9 +28,13 @@ ROTEIRO = {
           "Os pontos formam uma linha fina com desenho que se repete (um vale, uma onda), "
           "ou uma faixa larga e sem forma? Olhe também a escala do eixo vertical: de 0,994 "
           "a 1,006 é uma variação de 0,6%, perto do ruído."),
-    "2p": ("2. Curva dobrada em 2P",
-           "Aparecem dois vales? Se têm profundidades diferentes, é binária e o período "
-           "real é 2P. Se são iguais, pode ser P (pulsante) ou 2P (binária de contato)."),
+    "2p": ("2. Curva dobrada em 2P: qual é o período? (não decide se é real)",
+           "Este painel só escolhe entre P e 2P para anotar o período; ter dois vales ou não "
+           "nunca é motivo para descartar. Dois vales de profundidades diferentes: binária, "
+           "período 2P. Um vale só e o resto plano (e, em P, pontos atravessando o vale em "
+           "1,00): binária com o segundo eclipse fraco demais, período 2P. A mesma forma "
+           "repetida duas vezes: em geral o período é P (pulsante ou mancha), salvo binária "
+           "de contato com vales largos e iguais."),
     "mapa": ("3. Mapa do sinal por pixel",
              "O x vermelho (onde o sinal é mais forte) está em cima do + verde (a estrela "
              "alvo)? Se está sobre outro círculo azul, o sinal vem da vizinha."),
@@ -108,10 +115,55 @@ def pista(r: dict, resposta: str, explicacao: str) -> str:
         return txt + " Uma variável catalogada ali tem o mesmo período."
     if longe and resposta == "descartado":
         return f"Olhe o mapa: o x vermelho está a {d:.1f} px do + verde, fora do alvo."
+    if resposta == "confirmado" and "razão 0.50" in explicacao:
+        return ("O catálogo dá o dobro do período medido: o real é 2P. Olhe o painel 2P: "
+                "dois vales (iguais numa binária de contato, diferentes numa binária "
+                "destacada) ou, se o segundo eclipse é raso demais, um vale só e o resto plano.")
     if resposta == "confirmado":
         return ("Repare na curva em P: linha fina e com forma, x vermelho sobre o + verde. "
                 "É o aspecto de uma variável real; compare com a próxima candidata.")
     return "Compare cada painel com o roteiro acima."
+
+
+def periodo_certo(explicacao: str, r: dict | None = None) -> str | None:
+    """'P' ou '2P' pelo periodo do catalogo; None se o catalogo nao tem periodo comparavel.
+
+    razao = periodo medido / periodo do catalogo: 0,50 quer dizer que o real e o dobro.
+    So periodo do VSX: rotacao (manchas mudam de forma, 2P nao fica identico) e catalogos
+    que discordam entre si ensinariam a regra errada. Os casos do VSX foram conferidos
+    um a um nos paineis.
+    """
+    if not explicacao.startswith("VSX"):
+        return None
+    # resposta P com variacao grande: em 2P dois vales iguais e profundos, que so com o TESS
+    # nao se distinguem de binaria de estrelas gemeas (periodo 2P); o VSX decidiu com outros dados
+    if "razão 1.00" in explicacao and r and (r.get("amplitude") or 0) >= 0.10:
+        return None
+    if "razão 0.50" in explicacao:
+        return "2P"
+    if "razão 1.00" in explicacao:
+        return "P"
+    return None
+
+
+def explicar_periodo(certo: str, r: dict) -> str:
+    """Por que P ou 2P, com os numeros: dois vales iguais em 2P aparecem tanto em pulsante
+    (resposta P) quanto em binaria de contato (resposta 2P), e so amplitude e periodo separam."""
+    per, amp = r.get("periodo_d"), r.get("amplitude")
+    if certo == "2P":
+        # sem amplitude aqui: em eclipse estreito a do Lomb-Scargle fica bem abaixo da
+        # profundidade real (3,5% para um eclipse de 20%) e confundiria com a regra da EW
+        num = "" if per is None else f" Aqui 2P = {2 * per:.3f} d."
+        return ("O catálogo dá o dobro do período medido: o real é 2P. No painel 2P aparecem "
+                "dois vales (diferentes numa binária destacada; iguais numa binária de contato, "
+                "que varia mais de ~10% e tem 2P acima de ~0,22 d) ou um vale só e o resto "
+                f"plano, quando o segundo eclipse é raso demais.{num}")
+    num = ("" if per is None or amp is None
+           else f" Aqui a variação é de {amp * 100:.1f}% e 2P = {2 * per:.3f} d.")
+    return ("O catálogo dá o mesmo período medido: o real é P. Em 2P a mesma forma aparece "
+            "duas vezes, sem nada novo. Se forem dois vales iguais, não é binária de contato "
+            "quando a variação é pequena (abaixo de ~10%) ou 2P fica abaixo de ~0,22 d: aí é "
+            f"pulsante.{num}")
 
 
 def mostrar_guia(st, treino: pd.DataFrame | None, aberto: bool, excluir: str | None = None) -> None:
