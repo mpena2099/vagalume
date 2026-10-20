@@ -96,10 +96,6 @@ def pista(r: dict, resposta: str, explicacao: str) -> str:
     if "não se repete" in explicacao:
         return ("Este caso só se resolve com os outros setores: no setor mostrado a curva "
                 "parece boa, mas o período não volta nos setores seguintes.")
-    if resposta == "confirmado" and d is not None and d > DESLOCAMENTO_MAX_PX:
-        return (f"Variável conhecida, mas o pico saiu a {d:.1f} px do alvo: em campo cheio o "
-                "mapa às vezes engana. Aqui a curva limpa e o catálogo decidem; numa candidata, "
-                "esse mapa pediria Dúvida.")
     if resposta == "confirmado":
         return ("Repare na curva em P: linha fina e com forma, x vermelho sobre o + verde. "
                 "É o aspecto de uma variável real; compare com a próxima candidata.")

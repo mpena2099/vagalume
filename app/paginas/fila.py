@@ -102,7 +102,7 @@ nav[2].markdown(
 
 try:
     with conectar() as conn:
-        _treino = pd.read_sql("SELECT * FROM treino", conn)
+        _treino = pd.read_sql("SELECT * FROM treino WHERE resposta != 'ambiguo'", conn)
 except Exception:
     _treino = None
 guia.mostrar_guia(st, _treino, aberto=False)

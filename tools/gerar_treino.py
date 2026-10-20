@@ -7,7 +7,8 @@ data/treino/. Usa rede (MAST, TESScut, VizieR) e o banco da varredura. Rodar da 
 
     python -u tools/gerar_treino.py
 
-Retoma de onde parou: casos (tic, metodo) que ja estao na tabela sao pulados.
+Retoma de onde parou: casos (tic, metodo) que ja estao na tabela sao pulados. Casos
+'ambiguo' (variavel catalogada com o sinal fora do alvo) ficam na tabela, fora do quiz.
 """
 
 import json
@@ -21,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 import pandas as pd
 
-from config import SQLITE_PATH, TREINO_DIR
+from config import DESLOCAMENTO_MAX_PX, SQLITE_PATH, TREINO_DIR
 from src.triagem import _triar
 
 CAMPOS = ("tic", "metodo", "periodo_d", "amplitude", "tmag", "n_ciclos", "deslocamento_px",
@@ -58,12 +59,16 @@ SEMENTE = 42
 
 
 def _explicacao_conhecido(r) -> str:
+    # alguns catalogos (ATLAS, Gaia grande amplitude) nao tem coluna de nome
+    nome = r.get("match_nome")
+    sem_nome = nome is None or pd.isna(nome) or str(nome) == "None"
     if pd.isna(r.get("periodo_catalogo")):
-        return (f"{r['match_catalogo']} já lista esta estrela como variável "
-                f"({r['match_nome']}), sem período comparável no catálogo.")
+        return (f"{r['match_catalogo']} já lista esta estrela como variável"
+                f"{'' if sem_nome else f' ({nome})'}, sem período no catálogo para comparar.")
     razao = r.get("razao_periodo")
     extra = "" if pd.isna(razao) else f", razão {float(razao):.2f} com o período medido"
-    return (f"{r['match_catalogo']} já lista {r['match_nome']} com período "
+    quem = "esta estrela" if sem_nome else str(nome)
+    return (f"{r['match_catalogo']} já lista {quem} com período "
             f"{float(r['periodo_catalogo']):.4f} d{extra}: é uma variável conhecida.")
 
 
@@ -105,11 +110,31 @@ def _dados(r, extra: dict) -> dict:
     return dados
 
 
+def _resposta_final(resposta: str, dados: dict) -> str:
+    """Variavel catalogada com o pico do sinal fora do alvo vira 'ambiguo' (fica fora do quiz).
+
+    O catalogo diz que ha uma variavel ali, mas o mapa diz que o sinal do TESS vem de outro
+    pixel: provavelmente da vizinha. Com 'confirmado', o quiz ensinava a ignorar o mapa.
+    """
+    d = dados.get("deslocamento_px")
+    if resposta == "confirmado" and d is not None and d > DESLOCAMENTO_MAX_PX:
+        return "ambiguo"
+    return resposta
+
+
 def main():
     TREINO_DIR.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(SQLITE_PATH) as con:
         con.execute(_SCHEMA)
         feitos = {(int(tic), metodo) for tic, metodo in con.execute("SELECT tic, metodo FROM treino")}
+        for tic, metodo, figura in con.execute(
+                "SELECT tic, metodo, figura FROM treino WHERE resposta = 'confirmado'").fetchall():
+            arquivo = Path(figura).with_suffix(".json")
+            dados = json.loads(arquivo.read_text(encoding="utf-8")) if arquivo.exists() else {}
+            if _resposta_final("confirmado", dados) == "ambiguo":
+                con.execute("UPDATE treino SET resposta = 'ambiguo' WHERE tic = ? AND metodo = ?",
+                            (tic, metodo))
+        con.commit()
         casos = _casos(con)
         novos = 0
         for i, (r, resposta, explicacao) in enumerate(casos, 1):
@@ -124,8 +149,10 @@ def main():
                       f"({str(e)[:120]}); pulando")
                 continue
             destino = Path(extra["figura"])
+            numeros = _dados(r, extra)
             destino.with_suffix(".json").write_text(
-                json.dumps(_dados(r, extra), ensure_ascii=False), encoding="utf-8")
+                json.dumps(numeros, ensure_ascii=False), encoding="utf-8")
+            resposta = _resposta_final(resposta, numeros)
             con.execute("INSERT INTO treino VALUES (?, ?, ?, ?, ?)",
                         (tic, metodo, str(destino), resposta, explicacao))
             con.commit()

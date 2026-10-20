@@ -35,7 +35,7 @@ def comecar(treino: pd.DataFrame):
 
 try:
     with sqlite3.connect(SQLITE_PATH) as conn:
-        treino = pd.read_sql("SELECT * FROM treino", conn)
+        treino = pd.read_sql("SELECT * FROM treino WHERE resposta != 'ambiguo'", conn)
 except Exception:
     estilo.cabecalho("Treino")
     st.info("A tabela `treino` ainda não existe. Crie o conjunto com:\n\n"
