@@ -11,7 +11,6 @@ Retoma de onde parou: casos (tic, metodo) que ja estao na tabela sao pulados.
 """
 
 import json
-import shutil
 import sqlite3
 import sys
 from pathlib import Path
@@ -25,7 +24,6 @@ import pandas as pd
 from config import SQLITE_PATH, TREINO_DIR
 from src.triagem import _triar
 
-PAINEIS = ("curva", "p", "2p", "periodograma", "campo", "mapa")
 CAMPOS = ("tic", "metodo", "periodo_d", "amplitude", "tmag", "n_ciclos", "deslocamento_px",
           "persistente", "setores_extra", "periodos_extra", "suspeito_blend",
           "amp_necessaria_min", "gaia_candidata", "gaia_classe")
@@ -120,18 +118,12 @@ def main():
                 print(f"  {i}/{len(casos)} TIC {tic} {metodo}: já no treino")
                 continue
             try:
-                extra = _triar(SimpleNamespace(**r.to_dict()))
+                extra = _triar(SimpleNamespace(**r.to_dict()), TREINO_DIR, f"{tic}_{metodo}")
             except Exception as e:
                 print(f"  {i}/{len(casos)} TIC {tic} {metodo}: figura falhou "
                       f"({str(e)[:120]}); pulando")
                 continue
-            origem = Path(extra["figura"])
-            destino = TREINO_DIR / f"{tic}_{metodo}.png"
-            shutil.copy(origem, destino)
-            for nome in PAINEIS[1:]:
-                painel = origem.with_name(f"{tic}_{nome}.png")
-                if painel.exists():
-                    shutil.copy(painel, destino.with_name(f"{destino.stem}_{nome}.png"))
+            destino = Path(extra["figura"])
             destino.with_suffix(".json").write_text(
                 json.dumps(_dados(r, extra), ensure_ascii=False), encoding="utf-8")
             con.execute("INSERT INTO treino VALUES (?, ?, ?, ?, ?)",

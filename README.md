@@ -39,7 +39,7 @@ Fases sequenciais que se comunicam por tabelas SQLite em `data/vagalume.db`. Cad
 | 5 | `cruzar_conhecidos` | Cruza com VSX, ATLAS, TESS-EBs, outros catálogos de variáveis do TESS (inclusive Wang+2025, do China-VO), Gaia DR2/DR3, ZTF, ASAS-SN, TOI e SIMBAD | `sinais_fase5` |
 | 6 | `checar_contaminacao` | Descarta sinais que podem vir de estrela vizinha | `candidatos` |
 | 7 | `triagem` | Gera uma figura por candidata: curva, curva dobrada em P e 2P, periodograma, campo TESS e mapa do sinal por pixel | `candidatos_fase7` |
-| revisão | `app/revisao.py` | App local (Streamlit) para olhar cada candidata e marcar confirmar, dúvida ou descartar | `revisao_humana` |
+| revisão | `app/revisao.py` + `app/paginas/` | App local (Streamlit) para olhar cada candidata e marcar confirmar, dúvida ou descartar | `revisao_humana` |
 | 8 | `ficha_vsx` | Para as confirmadas, monta a ficha do VSX: fonte Gaia DR3, V estimada, período (P ou 2P), tipo sugerido, época do mínimo em BJD, amplitude e curva em fase, e refaz a busca no VizieR inteiro | `data/vsx/` |
 
 O envio ao VSX é manual (não há API): copie os campos da ficha para o formulário, seguindo o checklist da seção 11 da [especificação](especificacao.md). Tipo e período da ficha são sugestões; confira na curva em fase.
@@ -61,7 +61,7 @@ python src/ficha_vsx.py         # Fase 8: fichas do VSX das confirmadas (--duvid
 
 `-u` faz o Python escrever cada `print` na hora. No terminal isso já acontece, mas com a saída redirecionada (`> log.txt`, `| tee log.txt`, `nohup`) o Python junta tudo em blocos e o log fica parado por minutos, parecendo travado, nas fases longas.
 
-As decisões da revisão ficam na tabela `revisao_humana`, que o pipeline nunca recria.
+As decisões da revisão ficam na tabela `revisao_humana`, que o pipeline nunca recria. O app usa o tema escuro de `.streamlit/config.toml` e o visual de `app/estilo.py`; as páginas ficam em `app/paginas/`.
 
 As curvas baixadas ficam em cache em `data/curvas/` e as figuras de triagem em `data/triagem/`.
 

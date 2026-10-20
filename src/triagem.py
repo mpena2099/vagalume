@@ -120,7 +120,8 @@ def _marcar_campo(ax, wcs, gaia, alvo_xy, pico):
     ax.set_ylim(-0.5, TRIAGEM_RECORTE_PX - 0.5)
 
 
-def _figura(s, tempo, fluxo, campo, mapa, wcs, gaia, alvo_xy, pico, desloc) -> Path:
+def _figura(s, tempo, fluxo, campo, mapa, wcs, gaia, alvo_xy, pico, desloc, pasta: Path,
+            nome: str) -> Path:
     fig, ax = plt.subplots(2, 3, figsize=(16, 9))
     epoca = tempo[np.argmin(fluxo)]
     ax[0, 0].plot(tempo, fluxo, ".", ms=1, color="0.3")
@@ -151,20 +152,22 @@ def _figura(s, tempo, fluxo, campo, mapa, wcs, gaia, alvo_xy, pico, desloc) -> P
     fig.suptitle(f"TIC {s.tic}  T={s.tmag:.2f}  {s.metodo.upper()} P={s.periodo_d:.5f} d  "
                  f"amp={s.amplitude * 100:.2f}%   (+ alvo, x pico do sinal, o Gaia)")
     fig.tight_layout()
-    TRIAGEM_DIR.mkdir(parents=True, exist_ok=True)
-    caminho = TRIAGEM_DIR / f"{s.tic}.png"
+    pasta.mkdir(parents=True, exist_ok=True)
+    caminho = pasta / f"{nome}.png"
     fig.savefig(caminho, dpi=100)
     renderer = fig.canvas.get_renderer()
     paineis = {"curva": ax[0, 0], "p": ax[0, 1], "2p": ax[0, 2],
                "periodograma": ax[1, 0], "campo": ax[1, 1], "mapa": ax[1, 2]}
-    for nome, a in paineis.items():
+    for painel, a in paineis.items():
         bbox = a.get_tightbbox(renderer).transformed(fig.dpi_scale_trans.inverted())
-        fig.savefig(TRIAGEM_DIR / f"{s.tic}_{nome}.png", dpi=100, bbox_inches=bbox.padded(0.1))
+        fig.savefig(pasta / f"{nome}_{painel}.png", dpi=100, bbox_inches=bbox.padded(0.1))
     plt.close(fig)
     return caminho
 
 
-def _triar(s) -> dict:
+def _triar(s, pasta: Path = TRIAGEM_DIR, nome: str | None = None) -> dict:
+    """pasta/nome: o treino e as referencias gravam fora de TRIAGEM_DIR; no mesmo nome
+    sobrescreviam a figura da candidata quando usavam outro sinal da mesma estrela."""
     alvo = SkyCoord(s.ra, s.dec, unit="deg")
     lc, _ = baixar_curva(int(s.tic), int(s.setor), s.autor)
     tempo, fluxo = _arrays(_flatten(lc, LS_FLATTEN_D))
@@ -172,7 +175,8 @@ def _triar(s) -> dict:
     campo, mapa, wcs, alvo_xy, pico, desloc = _mapa_pixels(int(s.tic), int(s.setor), s, epoca,
                                                           alvo)
     gaia = _gaia_campo(alvo, s.tmag)
-    caminho = _figura(s, tempo, fluxo, campo, mapa, wcs, gaia, alvo_xy, pico, desloc)
+    caminho = _figura(s, tempo, fluxo, campo, mapa, wcs, gaia, alvo_xy, pico, desloc, pasta,
+                      nome or str(s.tic))
     return {"deslocamento_px": desloc, "figura": str(caminho)}
 
 

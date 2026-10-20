@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd
 from PIL import Image
 
-from config import IMG_DIR, SQLITE_PATH
+from config import IMG_DIR, SQLITE_PATH, TREINO_DIR
 from src.triagem import _triar
 
 # nome do arquivo -> (tic, metodo, tabela de onde vem o sinal)
@@ -48,7 +48,7 @@ def main():
     IMG_DIR.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(SQLITE_PATH) as con:
         for nome, (tic, metodo, tabela) in CASOS.items():
-            figura = Path(_triar(_sinal(con, tic, metodo, tabela))["figura"])
+            figura = Path(_triar(_sinal(con, tic, metodo, tabela), TREINO_DIR, f"ref_{nome}")["figura"])
             saida = IMG_DIR / f"ref_{nome}.jpg"
             img = Image.open(figura).convert("RGB")
             img.thumbnail((1200, 1200))
