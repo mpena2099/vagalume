@@ -6,8 +6,8 @@ import httpx
 import lightkurve as lk
 from astroquery.mast import conf as mast_conf
 
-from config import AUTORES_PREFERIDOS, CURVAS_DIR, HTTP_TIMEOUT_S
-from src.util import retry
+from config import AUTORES_PREFERIDOS, CURVAS_DIR, DOWNLOAD_PRAZO_S, HTTP_TIMEOUT_S
+from src.util import com_prazo, retry
 
 # o Portal do MAST (por tras do search_lightcurve) as vezes leva minutos por consulta; com o
 # default de 600 s uma rodada inteira travava. Falhar cedo deixa o retry agir
@@ -88,8 +88,9 @@ def baixar_curva(tic: int, setor: int | None = None, autor: str | None = None):
         CURVAS_DIR.mkdir(parents=True, exist_ok=True)
         lc = _baixar_qlp(tic, setor, _caminho(tic, setor, autor))
     else:
-        resultado = retry(lambda: lk.search_lightcurve(f"TIC {tic}", sector=setor, author=autor),
-                          "MAST")
+        resultado = retry(lambda: com_prazo(
+            lambda: lk.search_lightcurve(f"TIC {tic}", sector=setor, author=autor),
+            DOWNLOAD_PRAZO_S), "MAST")
         if resultado is None or len(resultado) == 0:
             raise ValueError(f"TIC {tic} sem curvas no MAST")
         autor, setor, linha = _escolher(resultado, setor)
@@ -99,7 +100,7 @@ def baixar_curva(tic: int, setor: int | None = None, autor: str | None = None):
         if caminho.exists():
             lc = lk.read(caminho)
         else:
-            lc = retry(lambda: _download(linha), "MAST")
+            lc = retry(lambda: com_prazo(lambda: _download(linha), DOWNLOAD_PRAZO_S), "MAST")
             lc.to_fits(caminho, overwrite=True)
 
     if "quality" in lc.colnames:

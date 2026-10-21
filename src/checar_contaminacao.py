@@ -13,7 +13,7 @@ from astropy.coordinates import SkyCoord
 from astroquery.vizier import Vizier
 
 from config import (BLEND_AMP_MAX, BLS_FLATTEN_D, CATALOGOS_GAIA, CATALOGOS_VIZIER,
-                    CONTAMINACAO_WORKERS, LS_FLATTEN_D, PERIODO_MATCH_TOL_REL,
+                    CONTAMINACAO_WORKERS, DOWNLOAD_PRAZO_S, LS_FLATTEN_D, PERIODO_MATCH_TOL_REL,
                     PERSISTENCIA_MAX_SETORES, RAIO_MESMA_ESTRELA_ARCSEC,
                     RAIO_VIZINHA_GAIA_ARCSEC, RAIO_VIZINHA_VARIAVEL_ARCSEC, SQLITE_PATH,
                     VIZINHA_DMAG_MAX)
@@ -22,7 +22,7 @@ from src.cruzar_conhecidos import _consultar_vizier
 from src.curvas import SemCurva, baixar_curva, setores_observados
 from src.detectar_sinal import _arrays, _flatten
 from src.periodo import comparar_periodo, medir_periodo_bls, medir_periodo_ls
-from src.util import retry
+from src.util import com_prazo, retry
 
 
 def amp_necessaria(amplitude: float, dmag: float) -> float:
@@ -83,7 +83,8 @@ def _setores(tic: int, autor: str, ra: float, dec: float) -> set[int]:
         # TESScut lista os setores em ~1 s; a busca do lightkurve passa pelo Portal do MAST,
         # que as vezes leva minutos. Setor sem QLP cai em SemCurva no download
         return set(setores_observados(ra, dec))
-    busca = retry(lambda: lk.search_lightcurve(f"TIC {tic}", author=autor), "MAST")
+    busca = retry(lambda: com_prazo(lambda: lk.search_lightcurve(f"TIC {tic}", author=autor),
+                                    DOWNLOAD_PRAZO_S), "MAST")
     return {int(s) for s in busca.table["sequence_number"]} if len(busca) else set()
 
 

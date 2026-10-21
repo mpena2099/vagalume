@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd
 import streamlit as st
 
-from app import dados, estilo, guia
+from app import dados, estilo, execucao, guia
 from config import SQLITE_PATH
 
 ORDENACOES = {
@@ -45,6 +45,71 @@ def limpar(tic: int):
         dados.apagar_revisao(conn, tic)
 
 
+def buscar():
+    if not execucao.rodando():  # clique duplo nao abre duas buscas
+        execucao.iniciar()
+
+
+def esquecer_busca():
+    execucao.LOG.unlink(missing_ok=True)
+
+
+def botao_buscar(chave: str):
+    st.button("Buscar mais candidatas", type="primary", on_click=buscar, key=chave)
+    st.caption("Escolhe sozinho uma região do céu ainda não varrida e roda o pipeline "
+               "inteiro (1 a 2 horas). Pode fechar a página: a busca continua. "
+               "Pelo terminal, na pasta do projeto:")
+    st.code(execucao.COMANDO, language="bash")
+
+
+@st.fragment(run_every=5)
+def progresso():
+    if not execucao.rodando():
+        st.rerun()  # terminou: recarrega a pagina inteira com as candidatas novas
+    log = execucao.ler_log()
+    e = execucao.estado(log)
+    if not log or e["terminou"] or e["erro"]:  # log de outra rodada: esta veio do terminal
+        st.info("Uma busca de candidatas está rodando, iniciada pelo terminal: o progresso "
+                "aparece lá. As candidatas novas entram na fila quando ela terminar.")
+        return
+    minutos = execucao.minutos_desde_inicio()
+    with st.container(border=True):
+        st.markdown("**Buscando mais candidatas**"
+                    + (f" no campo {e['campo']}" if e["campo"] else ""))
+        texto = e["fase"] or "Escolhendo o campo"
+        if e["progresso"]:
+            i, n = e["progresso"]
+            st.progress(min(i / n, 1.0), text=f"{texto}: {i} de {n}")
+        else:
+            st.progress(0.0, text=texto)
+        st.caption(("" if minutos is None else f"{minutos:.0f} min desde o início. ")
+                   + "Pode fechar a página: a busca continua e as candidatas novas entram na fila.")
+        with st.expander("Ver o log"):
+            st.code("\n".join(execucao.ler_log().splitlines()[-15:]) or "(vazio)")
+
+
+def painel_busca(pendentes: int):
+    """Busca de mais candidatas: progresso se roda; resultado da ultima; botao se a fila acabou."""
+    if execucao.rodando():
+        progresso()
+        return
+    e = execucao.estado(execucao.ler_log())
+    if e["fim_da_grade"]:
+        st.info("A grade de regiões do céu acabou: todas foram varridas. Para continuar, "
+                "acrescente faixas em `FAIXAS_B_DEG` (src/campos.py).")
+    elif e["erro"]:
+        st.error(f"A última busca parou ({e['erro']}). Tentar de novo refaz a mesma região.")
+        botao_buscar("buscar_erro")
+        return
+    elif e["terminou"]:
+        st.success(f"Busca terminou{' no campo ' + e['campo'] if e['campo'] else ''}. "
+                   "As candidatas novas já estão na fila.")
+        st.button("Ok", on_click=esquecer_busca)
+    if pendentes == 0:
+        st.success("Fila revisada: nenhuma candidata pendente.")
+        botao_buscar("buscar_fim")
+
+
 # ---------------------------------------------------------------- dados
 try:
     with conectar() as conn:
@@ -58,10 +123,17 @@ except Exception as e:
 if todos.empty:
     estilo.cabecalho("Revisão visual")
     st.warning("A tabela candidatos_fase7 está vazia.")
+    painel_busca(0)
     st.stop()
 
 revisados = int((todos["decisao"] != "pendente").sum())
 estilo.cabecalho("Revisão visual", (revisados, len(todos)), "revisados")
+pendentes = len(todos) - revisados
+painel_busca(pendentes)
+if pendentes and not execucao.rodando():
+    with st.sidebar.expander("Buscar mais candidatas"):
+        st.caption(f"Ainda há {pendentes} pendente(s): o ideal é revisar antes.")
+        botao_buscar("buscar_lateral")
 
 # ---------------------------------------------------------------- barra lateral
 st.sidebar.markdown("##### Filtros")

@@ -9,6 +9,8 @@ IMG_DIR = ROOT / "docs" / "img"
 AUTORES_PREFERIDOS = ["QLP", "TESS-SPOC", "SPOC"]
 # timeout por requisicao ao MAST/TESScut; o default do astroquery (600 s) travava rodadas
 HTTP_TIMEOUT_S = 120
+# prazo total de um download que ignora o timeout acima (recorte do TESScut na Fase 7)
+DOWNLOAD_PRAZO_S = 300
 
 # Grade de busca de periodo
 PERIODO_MIN_D = 0.1

@@ -288,6 +288,40 @@ def test_campos_proximo():
     assert campos.proximo(campos.ler_feitos(conn) + [inicial], sempre)["nome"] != seg["nome"]
 
 
+def test_estado_execucao():
+    from app.execucao import estado
+    vazio = estado("")
+    assert vazio["fase"] is None and not vazio["terminou"] and vazio["erro"] is None
+    log = """  Proximo campo: l082.5b+0_s55 (RA 1, Dec 2, setor 55)
+  Executando: Fase 3 - Baixar curvas
+  120/500 (0 erros)
+  Executando: Fase 4 - Detectar sinal
+"""
+    e = estado(log)
+    assert e["campo"].startswith("l082.5b+0_s55") and e["fase"] == "Fase 4 - Detectar sinal"
+    assert e["progresso"] is None  # fase nova zera o progresso da anterior
+    assert estado(log + "  50/500\n")["progresso"] == (50, 500)
+    assert estado(log + "\nERRO em Fase 4 - Detectar sinal: timeout\n")["erro"].startswith("ERRO em")
+    assert estado(log + "  Campo x registrado em campos_feitos.\n")["terminou"]
+    assert estado("  A grade de campos acabou: todos\n")["fim_da_grade"]
+
+
+def test_com_prazo():
+    import time
+    from src.util import com_prazo
+    assert com_prazo(lambda: 7, 1) == 7
+    try:
+        com_prazo(lambda: time.sleep(5), 0.2)
+        assert False, "devia estourar o prazo"
+    except TimeoutError:
+        pass
+    try:
+        com_prazo(lambda: 1 / 0, 1)
+        assert False
+    except ZeroDivisionError:
+        pass
+
+
 if __name__ == "__main__":
     for nome, fn in list(globals().items()):
         if nome.startswith("test_"):

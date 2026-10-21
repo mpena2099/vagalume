@@ -16,11 +16,11 @@ from astropy.coordinates import SkyCoord
 from astropy.timeseries import LombScargle
 from astroquery.vizier import Vizier
 
-from config import (LS_FLATTEN_D, PERIODO_MAX_D, PERIODO_MIN_D, SQLITE_PATH, TRIAGEM_DIR,
+from config import (DOWNLOAD_PRAZO_S, LS_FLATTEN_D, PERIODO_MAX_D, PERIODO_MIN_D, SQLITE_PATH, TRIAGEM_DIR,
                     TRIAGEM_RECORTE_PX, VIZINHA_DMAG_MAX)
 from src.curvas import baixar_curva
 from src.detectar_sinal import _arrays, _flatten
-from src.util import retry
+from src.util import com_prazo, retry
 
 PIXEL_ARCSEC = 21.0
 
@@ -78,8 +78,9 @@ def profundidade_eclipse(tempo: np.ndarray, fluxo: np.ndarray, periodo: float, e
 
 
 def _mapa_pixels(tic: int, setor: int, s, epoca: float, alvo: SkyCoord):
-    tpf = retry(lambda: lk.search_tesscut(f"TIC {tic}", sector=setor)
-                .download(cutout_size=TRIAGEM_RECORTE_PX), "TESScut")
+    tpf = retry(lambda: com_prazo(lambda: lk.search_tesscut(f"TIC {tic}", sector=setor)
+                                  .download(cutout_size=TRIAGEM_RECORTE_PX), DOWNLOAD_PRAZO_S),
+                "TESScut")
     tpf = tpf[tpf.quality == 0]
     cubo = np.asarray(tpf.flux.value, dtype=float)
     tempo = np.asarray(tpf.time.value, dtype=float)
