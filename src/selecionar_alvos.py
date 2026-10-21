@@ -38,9 +38,12 @@ def filtrar_alvos(tic: pd.DataFrame, obs: pd.DataFrame, setor: int) -> pd.DataFr
     return df.sort_values("tmag").reset_index(drop=True)
 
 
-def run():
-    coord = f"{ALVO_RA_DEG} {ALVO_DEC_DEG}"
-    print(f"  Campo RA={ALVO_RA_DEG} Dec={ALVO_DEC_DEG} raio={ALVO_RAIO_DEG} deg, setor {ALVO_SETOR}")
+def run(campo: dict | None = None) -> int:
+    """campo: {"setor", "ra", "dec"} de src.campos; sem ele, o campo fixo do config."""
+    setor = campo["setor"] if campo else ALVO_SETOR
+    ra, dec = (campo["ra"], campo["dec"]) if campo else (ALVO_RA_DEG, ALVO_DEC_DEG)
+    coord = f"{ra} {dec}"
+    print(f"  Campo RA={ra} Dec={dec} raio={ALVO_RAIO_DEG} deg, setor {setor}")
 
     print("  Consultando TIC...")
     tic = retry(lambda: Catalogs.query_criteria(
@@ -53,11 +56,11 @@ def run():
     print("  Consultando curvas no MAST...")
     obs = retry(lambda: Observations.query_criteria(
         coordinates=coord, radius=ALVO_RAIO_DEG,
-        provenance_name=AUTORES_PREFERIDOS, sequence_number=ALVO_SETOR), "MAST")
+        provenance_name=AUTORES_PREFERIDOS, sequence_number=setor), "MAST")
     obs = obs["target_name", "provenance_name", "sequence_number"].to_pandas()
-    print(f"  {len(obs)} curvas no setor {ALVO_SETOR}")
+    print(f"  {len(obs)} curvas no setor {setor}")
 
-    df = filtrar_alvos(tic, obs, ALVO_SETOR)
+    df = filtrar_alvos(tic, obs, setor)
     print(f"  {len(df)} alvos selecionados (limite {ALVO_MAX})")
     print(f"  Por autor: {df['autor'].value_counts().to_dict()}")
     print(f"  Tmag mediana {df['tmag'].median():.2f}")
@@ -66,6 +69,7 @@ def run():
     with sqlite3.connect(SQLITE_PATH) as con:
         df.to_sql("alvos", con, if_exists="replace", index=False)
     print(f"  Tabela 'alvos' gravada em {SQLITE_PATH}")
+    return len(df)
 
 
 if __name__ == "__main__":

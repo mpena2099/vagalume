@@ -125,9 +125,11 @@ def _gaia(alvo: SkyCoord) -> dict:
     t = t[t["_r"] < 3].sort_values("Gmag")
     if t.empty:
         return {}
+    # Source antes do iloc: a linha mista vira float64 e o ID de 19 digitos perde os ultimos
+    fonte = int(t["Source"].iloc[0])
     g = t.iloc[0]
     v = v_de_gaia(g["Gmag"], g["BP-RP"]) if pd.notna(g["BP-RP"]) else np.nan
-    return {"gaia_dr3": int(g["Source"]), "gaia_ra": float(g["RA_ICRS"]),
+    return {"gaia_dr3": fonte, "gaia_ra": float(g["RA_ICRS"]),
             "gaia_dec": float(g["DE_ICRS"]), "gaia_g": float(g["Gmag"]), "v_estimada": float(v),
             "gaia_sep_arcsec": float(g["_r"])}
 

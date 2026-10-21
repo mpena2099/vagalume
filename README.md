@@ -10,7 +10,7 @@ Pipeline pessoal de mineração de dados astronômicos que procura **estrelas va
 
 ## English summary
 
-Vagalume is a personal data-mining pipeline that searches public **TESS** light curves for **uncatalogued variable stars**, aiming at submissions to the AAVSO **VSX** catalogue. Seven sequential phases share state through SQLite: a sanity check that recovers known variables (WASP-18 b and two eclipsing binaries, periods within 0.1%), target selection from one TESS sector, light-curve download (QLP/TESS-SPOC via MAST), period search (Lomb-Scargle and BLS), cross-match against VSX, ATLAS, TESS-EBs, other TESS variability catalogues (including Wang+2025 from China-VO), Gaia DR2/DR3, ZTF, ASAS-SN, TOI and SIMBAD, a contamination check (variable neighbours, Gaia blends, persistence across other sectors) and one diagnostic figure per candidate, including a per-pixel signal map. A local Streamlit app supports human review. First run (sector 55, Cygnus, 500 stars): 39 periodic signals, 13 not found in any variable-star catalogue within 30", 9 candidates awaiting visual review. Code and docs are in Portuguese; `config.py` holds every parameter. Run with `python pipeline.py`; offline tests with `python tests/test_units.py`.
+Vagalume is a personal data-mining pipeline that searches public **TESS** light curves for **uncatalogued variable stars**, aiming at submissions to the AAVSO **VSX** catalogue. Seven sequential phases share state through SQLite: a sanity check that recovers known variables (WASP-18 b and two eclipsing binaries, periods within 0.1%), target selection from one TESS sector, light-curve download (QLP/TESS-SPOC via MAST), period search (Lomb-Scargle and BLS), cross-match against VSX, ATLAS, TESS-EBs, other TESS variability catalogues (including Wang+2025 from China-VO), Gaia DR2/DR3, ZTF, ASAS-SN, TOI and SIMBAD, a contamination check (variable neighbours, Gaia blends, persistence across other sectors) and one diagnostic figure per candidate, including a per-pixel signal map. A local Streamlit app supports human review. First run (sector 55, Cygnus, 500 stars): 39 periodic signals, 13 not found in any variable-star catalogue within 30", 9 candidates awaiting visual review. Code and docs are in Portuguese; `config.py` holds every parameter. Run with `python pipeline.py` (or `--proximo` to pick the next sky field automatically); offline tests with `python tests/test_units.py`.
 
 ## Em palavras simples
 
@@ -53,13 +53,16 @@ As oito fases estão implementadas (a 8, ficha do VSX, roda à mão depois da re
 ```bash
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-python -u pipeline.py           # roda as fases implementadas
+python -u pipeline.py           # campo fixo do config.py (fases 1 a 7 e casos do treino)
+python -u pipeline.py --proximo # escolhe sozinho o próximo campo do céu e roda tudo
 python tests/test_units.py      # testes offline (ou pytest)
 streamlit run app/revisao.py    # revisão visual das candidatas
 python src/ficha_vsx.py         # Fase 8: fichas do VSX das confirmadas (--duvidas, --todas)
 ```
 
 `-u` faz o Python escrever cada `print` na hora. No terminal isso já acontece, mas com a saída redirecionada (`> log.txt`, `| tee log.txt`, `nohup`) o Python junta tudo em blocos e o log fica parado por minutos, parecendo travado, nas fases longas.
+
+**Mais candidatas.** Terminou de revisar as candidatas da fila? Rode `python -u pipeline.py --proximo`. Ele escolhe sozinho uma região do céu ainda não varrida, no plano da Via Láctea e coberta por um setor do TESS com cadência de 200 s, e roda tudo, inclusive os casos novos do treino (1 a 2 horas para 500 estrelas). As candidatas novas entram na fila do app junto com as antigas. As regiões já feitas ficam na tabela `campos_feitos`; uma rodada que falha no meio não conta e é refeita na próxima vez. A grade tem mais de mil regiões. Se um dia acabar, o comando avisa e não faz nada.
 
 As decisões da revisão ficam na tabela `revisao_humana`, que o pipeline nunca recria. O app usa o tema escuro de `.streamlit/config.toml` e o visual de `app/estilo.py`; as páginas ficam em `app/paginas/`.
 
@@ -99,7 +102,7 @@ A Fase 8 sugere P ou 2P e o tipo automaticamente, mas a palavra final é sua. **
 
 **Checklist e sugestão do pipeline.** Acima da figura, cada candidata mostra seis itens com ícone: ✅ quando está tudo bem, ⚠️ quando pede atenção e ❌ quando pesa contra. Os itens são o pico do sinal no alvo (até 1 px), a repetição em outros setores, o número de ciclos (4 ou mais), a força do sinal (5 vezes o ruído ou mais), a vizinha brilhante e a presença no Gaia DR3. O app resume tudo em uma sugestão (Confirmado, Dúvida ou Descartado), que vale só se a curva dobrada em P tiver uma linha clara. A curva em 2P fica num expansor à parte: não decide se é real, só escolhe o período da ficha do VSX. A decisão continua sendo sua.
 
-**Modo treino.** A página Treino (na barra lateral) mostra casos com resposta conhecida: variáveis já catalogadas e sinais que o pipeline descartou (vizinha variável, sinal que não se repete, período de sistemático do TESS, sinal fraco demais, poucos ciclos), em número parecido. Ela exibe a curva em P e o mapa, os números e o checklist, sem a resposta; nos casos com período conferido no VSX, depois da decisão vem a curva em 2P e a pergunta "P ou 2P?". Você escolhe Confirmar, Dúvida ou Descartar, vê a resposta certa com a explicação e acumula pontos (dúvida vale meio ponto). Gere os casos com `python -u tools/gerar_treino.py`; o script usa a rede e retoma de onde parou.
+**Modo treino.** A página Treino (na barra lateral) mostra casos com resposta conhecida: variáveis já catalogadas e sinais que o pipeline descartou (vizinha variável, sinal que não se repete, período de sistemático do TESS, sinal fraco demais, poucos ciclos), em número parecido. Ela exibe a curva em P e o mapa, os números e o checklist, sem a resposta; nos casos com período conferido no VSX, depois da decisão vem a curva em 2P e a pergunta "P ou 2P?". Você escolhe Confirmar, Dúvida ou Descartar, vê a resposta certa com a explicação e acumula pontos (dúvida vale meio ponto). Cada resposta fica gravada no banco, e o quadro "Seu histórico" mostra o acerto geral, o das últimas 20 respostas e o acerto separado por resposta certa: diferença grande entre eles indica viés, como confirmar quase tudo. Gere os casos com `python -u tools/gerar_treino.py`; o script usa a rede e retoma de onde parou.
 
 **Casos de referência.** Todos são variáveis já catalogadas ou sinais que o próprio pipeline descartou (gerados por `python -u tools/gerar_referencias.py`).
 

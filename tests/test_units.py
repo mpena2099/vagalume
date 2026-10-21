@@ -253,6 +253,41 @@ def test_pista_treino():
     assert "linha fina" in pista({"deslocamento_px": 0.3, "forca": 20}, "confirmado", "VSX")
 
 
+def test_resumo_treino():
+    from app.dados import ler_tentativas, resumo_treino, salvar_tentativa
+    conn = sqlite3.connect(":memory:")
+    assert resumo_treino(ler_tentativas(conn)) == {}
+    salvar_tentativa(conn, "1_ls", "confirmado", "confirmado", 1.0)
+    salvar_tentativa(conn, "2_bls", "duvida", "descartado", 0.5)
+    salvar_tentativa(conn, "1_ls", "P", "2P", 0.0, "periodo")
+    r = resumo_treino(ler_tentativas(conn))
+    # a pergunta de periodo fica fora do acerto geral
+    assert r["respostas"] == 2 and abs(r["geral"] - 0.75) < 1e-9
+    assert r["por_certa"] == {"confirmado": (1.0, 1), "descartado": (0.5, 1)}
+    assert r["periodo"] == (0.0, 1)
+
+
+def test_campos_proximo():
+    from src import campos
+    g = campos.grade()
+    assert g[0] == (80.0, 0.0) and len(g) == 144 * len(campos.FAIXAS_B_DEG)
+    assert {b for _, b in g[:144]} == {0.0}  # o plano inteiro antes de sair dele
+    sempre = lambda c: [14, 55, 56]
+    primeiro = campos.proximo([], sempre)
+    assert primeiro["setor"] == 55 and primeiro["nome"] == "l080.0b+0_s55"
+    # o campo inicial (Cygnus, l=80 b=0) ja feito: pula pra um ponto a 2,5 graus
+    inicial = {"nome": "inicial_s55", "setor": 55, "ra": 308.9712, "dec": 40.6636}
+    seg = campos.proximo([inicial], sempre)
+    assert seg["nome"].startswith(("l082.5b+0", "l077.5b+0"))
+    # so setor antigo (sem 200 s): o ponto e pulado
+    assert campos.proximo([], lambda c: [14, 15])  is None
+    conn = sqlite3.connect(":memory:")
+    assert campos.ler_feitos(conn) == []
+    campos.registrar(conn, seg, 480)
+    assert campos.ler_feitos(conn)[0]["nome"] == seg["nome"]
+    assert campos.proximo(campos.ler_feitos(conn) + [inicial], sempre)["nome"] != seg["nome"]
+
+
 if __name__ == "__main__":
     for nome, fn in list(globals().items()):
         if nome.startswith("test_"):

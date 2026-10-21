@@ -15,7 +15,8 @@ PERIODO_MIN_D = 0.1
 PERIODO_MAX_D = 13.0
 BLS_DURACOES_D = [0.04, 0.08, 0.16]
 
-# Fase 2: campo no plano da Via Lactea (Cygnus, l=80 b=0), setor com 200 s de cadencia
+# Fase 2: campo inicial, no plano da Via Lactea (Cygnus, l=80 b=0), setor com 200 s de
+# cadencia. `pipeline.py --proximo` escolhe os campos seguintes sozinho (src/campos.py)
 ALVO_SETOR = 55
 ALVO_RA_DEG = 308.9712
 ALVO_DEC_DEG = 40.6636

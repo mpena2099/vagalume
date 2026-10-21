@@ -200,6 +200,12 @@ def run():
 
     df = pd.DataFrame(linhas).drop(columns=["Index"])
     with sqlite3.connect(SQLITE_PATH) as con:
+        # soma aos campos anteriores: a fila do app e a Fase 8 leem todas as candidatas
+        try:
+            antigas = pd.read_sql("SELECT * FROM candidatos_fase7", con)
+            df = pd.concat([antigas[~antigas["tic"].isin(df["tic"])], df], ignore_index=True)
+        except pd.errors.DatabaseError:
+            pass
         df.to_sql("candidatos_fase7", con, if_exists="replace", index=False)
     print(f"  Tabela 'candidatos_fase7' gravada, figuras em {TRIAGEM_DIR}")
     print("  Revisao: streamlit run app/revisao.py")

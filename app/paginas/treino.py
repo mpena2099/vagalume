@@ -63,6 +63,32 @@ pos = st.session_state.treino_pos
 feitos = st.session_state.treino_total
 estilo.cabecalho("Treino", (st.session_state.treino_acertos, feitos), "acertos")
 
+
+def mostrar_historico():
+    """Aproveitamento de todas as sessoes, gravado no banco."""
+    with sqlite3.connect(SQLITE_PATH) as conn:
+        r = dados.resumo_treino(dados.ler_tentativas(conn))
+    if not r:
+        return
+    with st.expander(f"Seu histórico: {r['geral']:.0%} de acerto em {r['respostas']} "
+                     f"{'resposta' if r['respostas'] == 1 else 'respostas'}"):
+        metricas = [("Geral", f"{r['geral']:.0%}", None,
+                     f"{r['respostas']} respostas em {r['dias']} dia(s)"),
+                    (f"Últimas {r['n_recentes']}", f"{r['recentes']:.0%}",
+                     f"{(r['recentes'] - r['geral']) * 100:+.0f} pontos", None)]
+        metricas += [(f"Quando era {ROTULOS[certa]}", f"{taxa:.0%}", None, f"{n} casos")
+                     for certa, (taxa, n) in r["por_certa"].items()]
+        if "periodo" in r:
+            metricas.append(("Período P ou 2P", f"{r['periodo'][0]:.0%}", None,
+                             f"{r['periodo'][1]} respostas"))
+        for col, (rotulo, valor, delta, ajuda) in zip(st.columns(len(metricas)), metricas):
+            col.metric(rotulo, valor, delta=delta, help=ajuda)
+        st.caption("Acerto muito diferente entre as colunas \"Quando era\" indica viés, por "
+                   "exemplo confirmar quase tudo. Dúvida vale meio ponto.")
+
+
+mostrar_historico()
+
 if pos >= len(ordem):
     st.success(f"Fim do treino: {st.session_state.treino_acertos:g} pontos em "
                f"{feitos} {'caso' if feitos == 1 else 'casos'}.")
@@ -76,6 +102,12 @@ if pos >= len(ordem):
     st.stop()
 
 caso = ordem.iloc[pos]
+
+
+def _gravar(escolha: str, certa: str, pontos: float, pergunta: str = "decisao"):
+    with sqlite3.connect(SQLITE_PATH) as conn:
+        dados.salvar_tentativa(conn, f"{int(caso['tic'])}_{caso['metodo']}", escolha, certa,
+                               pontos, pergunta)
 
 
 def mover(delta: int):
@@ -144,6 +176,7 @@ with direita:
                 st.session_state.treino_acertos += pontos
                 st.session_state.treino_total += 1
                 st.session_state.treino_respostas[pos] = {"escolha": escolha, "pontos": pontos}
+                _gravar(escolha, certa, pontos)
                 st.rerun()
         else:
             certa = caso["resposta"]
@@ -170,6 +203,7 @@ with direita:
                             st.session_state.treino_periodos[pos] = opcao
                             st.session_state.treino_periodo_total += 1
                             st.session_state.treino_periodo_acertos += int(opcao == per_certo)
+                            _gravar(opcao, per_certo, float(opcao == per_certo), "periodo")
                             st.rerun()
                 else:
                     (st.success if escolha_p == per_certo else st.error)(
