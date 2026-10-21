@@ -132,6 +132,8 @@ def mover(delta: int):
     st.session_state.treino_pos = max(0, min(len(ordem), st.session_state.treino_pos + delta))
 
 
+# guia antes da navegacao: logo acima do caso ele parecia fazer parte dele
+guia.mostrar_guia(st, treino, aberto=pos == 0, excluir=caso["figura"])
 nav = st.columns([1, 1, 6])
 nav[0].button("◀ Anterior", on_click=mover, args=(-1,), disabled=pos == 0, width="stretch")
 nav[1].button("Próximo ▶", on_click=mover, args=(+1,), width="stretch")
@@ -143,7 +145,6 @@ figura = Path(caso["figura"])
 dados_json = figura.with_suffix(".json")
 r = json.loads(dados_json.read_text(encoding="utf-8")) if dados_json.exists() else {}
 
-guia.mostrar_guia(st, treino, aberto=pos == 0, excluir=caso["figura"])
 
 if _painel(figura, "p").exists():
     cols = st.columns(2)
