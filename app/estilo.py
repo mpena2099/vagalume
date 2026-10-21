@@ -40,6 +40,7 @@ button[kind="primary"], button[kind="primary"] p {{ color: var(--vl-fundo) !impo
 .vl-marca {{ color: var(--vl-destaque); font-size: 1.6rem; font-weight: 700; line-height: 1.2; }}
 .vl-tagline {{ color: var(--vl-suave); font-size: .82rem; }}
 .vl-subtitulo {{ font-size: 1rem; font-weight: 600; margin-top: .25rem; }}
+.vl-descricao {{ color: var(--vl-suave); font-size: .85rem; margin-top: .2rem; max-width: 46rem; }}
 .vl-progresso {{ min-width: 170px; text-align: right; }}
 .vl-progresso-texto {{ font-size: .9rem; margin-bottom: .35rem; }}
 .vl-barra {{ height: 5px; background: var(--vl-borda); border-radius: 999px; overflow: hidden; }}
@@ -69,7 +70,7 @@ button[kind="primary"], button[kind="primary"] p {{ color: var(--vl-fundo) !impo
 
 
 def cabecalho(subtitulo: str, progresso: tuple[float, int] | None = None,
-              rotulo_progresso: str = "") -> None:
+              rotulo_progresso: str = "", descricao: str = "") -> None:
     barra = ""
     if progresso:
         atual, total = progresso
@@ -85,7 +86,8 @@ def cabecalho(subtitulo: str, progresso: tuple[float, int] | None = None,
         f'<div class="vl-marca">{ICON} {PROJECT}</div>'
         f'<div class="vl-tagline">{html.escape(TAGLINE)}</div>'
         f'<div class="vl-subtitulo">{html.escape(subtitulo)}</div>'
-        f'</div>{barra}</div>', unsafe_allow_html=True)
+        + (f'<div class="vl-descricao">{html.escape(descricao)}</div>' if descricao else "")
+        + f'</div>{barra}</div>', unsafe_allow_html=True)
 
 
 def ficha(itens: list[tuple[str, str, str | None]]) -> None:

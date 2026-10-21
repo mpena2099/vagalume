@@ -18,6 +18,9 @@ ORDENACOES = {
     "Sinal mais centrado no alvo primeiro": [("deslocamento_px", True)],
     "Mais brilhante primeiro (Tmag)": [("tmag", True)],
 }
+DESCRICAO = ("As candidatas que o pipeline achou e nenhum catálogo conhece. Para cada uma, olhe "
+             "a curva em P e o mapa e decida: Confirmar, Dúvida ou Descartar. A decisão fica "
+             "gravada, e as confirmadas viram fichas para o VSX.")
 ROTULOS = {"confirmado": "Confirmado", "duvida": "Dúvida", "descartado": "Descartado",
            "pendente": "Pendente"}
 
@@ -115,19 +118,19 @@ try:
     with conectar() as conn:
         todos = dados.carregar_candidatos(conn)
 except Exception as e:
-    estilo.cabecalho("Revisão visual")
+    estilo.cabecalho("Revisão visual", descricao=DESCRICAO)
     st.error(f"Não consegui ler as candidatas em {SQLITE_PATH}: {e}\n\n"
              "Rode `python pipeline.py` (ou as fases 2 a 7) antes de abrir o app.")
     st.stop()
 
 if todos.empty:
-    estilo.cabecalho("Revisão visual")
+    estilo.cabecalho("Revisão visual", descricao=DESCRICAO)
     st.warning("A tabela candidatos_fase7 está vazia.")
     painel_busca(0)
     st.stop()
 
 revisados = int((todos["decisao"] != "pendente").sum())
-estilo.cabecalho("Revisão visual", (revisados, len(todos)), "revisados")
+estilo.cabecalho("Revisão visual", (revisados, len(todos)), "revisados", DESCRICAO)
 pendentes = len(todos) - revisados
 painel_busca(pendentes)
 if pendentes and not execucao.rodando():

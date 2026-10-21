@@ -14,6 +14,9 @@ import streamlit as st
 from app import dados, estilo, guia
 from config import SQLITE_PATH
 
+DESCRICAO = ("Casos de resposta conhecida, para aprender a decidir antes da revisão de verdade. "
+             "Você responde, vê a resposta certa com a explicação e onde estava a pista. Nada "
+             "muda nas candidatas; só o seu histórico de acertos é gravado.")
 ROTULOS = {"confirmado": "Confirmado", "duvida": "Dúvida", "descartado": "Descartado"}
 
 
@@ -44,13 +47,13 @@ try:
     with sqlite3.connect(SQLITE_PATH) as conn:
         treino = pd.read_sql("SELECT * FROM treino WHERE resposta != 'ambiguo'", conn)
 except Exception:
-    estilo.cabecalho("Treino")
+    estilo.cabecalho("Treino", descricao=DESCRICAO)
     st.info("A tabela `treino` ainda não existe. Crie o conjunto com:\n\n"
             "```bash\npython -u tools/gerar_treino.py\n```")
     st.stop()
 
 if treino.empty:
-    estilo.cabecalho("Treino")
+    estilo.cabecalho("Treino", descricao=DESCRICAO)
     st.info("A tabela `treino` está vazia. Rode `python -u tools/gerar_treino.py` "
             "para gerar os casos.")
     st.stop()
@@ -61,7 +64,7 @@ if "treino_respostas" not in st.session_state:  # sessao nova ou de versao antig
 ordem = st.session_state.treino_ordem
 pos = st.session_state.treino_pos
 feitos = st.session_state.treino_total
-estilo.cabecalho("Treino", (st.session_state.treino_acertos, feitos), "acertos")
+estilo.cabecalho("Treino", (st.session_state.treino_acertos, feitos), "acertos", DESCRICAO)
 
 
 def mostrar_historico():
