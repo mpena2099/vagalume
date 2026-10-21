@@ -192,6 +192,9 @@ with direita:
             if per_certo:
                 st.markdown("**Segunda pergunta: o período certo é P ou 2P?** Compare a curva "
                             "em P, acima, com a curva em 2P:")
+                with st.expander("Relembrar: o que muda entre P e 2P"):
+                    st.markdown(guia.PERIODO[1])
+                    guia.mostrar_figura_periodo(st)
                 if _painel(figura, "2p").exists():
                     with st.container(key="figura_2p"):
                         st.image(_painel(figura, "2p"), width="stretch")

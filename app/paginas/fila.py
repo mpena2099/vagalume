@@ -195,9 +195,10 @@ if figura and figura.exists():
         caminho_2p = figura.with_name(f"{tic}_2p.png")
         if caminho_2p.exists():
             with st.expander("Período: P ou 2P? (depois de confirmar, para a ficha do VSX)"):
-                st.markdown(f"**{guia.PERIODO[0]}.** {guia.PERIODO[1]}")
                 with st.columns(2)[0].container(key="figura_2p"):
                     st.image(caminho_2p, width="stretch")
+                st.markdown(f"**{guia.PERIODO[0]}.** {guia.PERIODO[1]}")
+                guia.mostrar_figura_periodo(st)
     else:
         with st.container(key="figura_unica"):
             st.image(figura, width="stretch")

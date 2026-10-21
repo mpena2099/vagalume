@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from config import DESLOCAMENTO_MAX_PX
+from config import DESLOCAMENTO_MAX_PX, IMG_DIR
 
 # Como ler a curva dobrada, mostrado no topo do guia
 LEITURA = ("**Como ler as curvas dobradas.** Cada ponto laranja é uma medida de brilho do TESS "
@@ -35,13 +35,31 @@ ROTEIRO = {
 
 # depois de confirmar: a curva em 2P so escolhe o periodo (P ou 2P) da ficha do VSX
 PERIODO = ("Depois de confirmar: o período (P ou 2P)",
-           "A curva em 2P não decide se a variação é real; serve para anotar o período certo "
-           "na ficha do VSX (a Fase 8 sugere sozinha, aqui você confere). Dois vales de "
-           "profundidades diferentes: binária, período 2P. Um vale só e o resto plano (e, em P, "
-           "pontos atravessando o vale em 1,00): binária com o segundo eclipse fraco demais, "
-           "período 2P. A mesma forma repetida duas vezes: em geral o período é P (pulsante ou "
-           "mancha), salvo binária de contato (vales largos e iguais, variação acima de ~10% e "
-           "2P acima de ~0,22 d).")
+           "Dobrar em P é cortar a curva em pedaços de P dias e empilhar os pedaços. Dobrar em "
+           "2P é cortar em pedaços duas vezes maiores: cada pedaço leva dois ciclos de P lado a "
+           "lado.\n\n"
+           "Por que olhar: numa binária a estrela escurece duas vezes por volta, num eclipse "
+           "fundo e num raso. O programa costuma ver \"um escurecimento a cada meia volta\" e "
+           "acha metade do período verdadeiro. Na figura abaixo (curvas simuladas), os ciclos de "
+           "P se alternam em laranja e azul:\n"
+           "- **Binária.** Em P, o eclipse fundo (laranja) e o raso (azul) caem no mesmo lugar, "
+           "um por cima do outro. Em 2P cada um vai para o seu lugar: dois vales diferentes. "
+           "O período certo é 2P.\n"
+           "- **Pulsante.** Laranja e azul fazem o mesmo desenho. Em 2P aparece só a mesma onda "
+           "duas vezes, nada novo. O período certo é P.\n\n"
+           "Dois casos especiais. Se em 2P sobra um vale só e o resto plano (e, em P, pontos "
+           "atravessam o vale em 1,00), o segundo eclipse é raso demais para aparecer: binária, "
+           "período 2P. Se em 2P aparecem dois vales iguais com variação acima de ~10% e 2P "
+           "acima de ~0,22 d, pode ser binária de contato, também 2P.\n\n"
+           "A curva em 2P não decide se a variação é real: serve só para anotar o período na "
+           "ficha do VSX (a Fase 8 sugere sozinha, aqui você confere).")
+FIGURA_PERIODO = IMG_DIR / "p_vs_2p.png"  # tools/gerar_figura_periodo.py
+
+
+def mostrar_figura_periodo(st) -> None:
+    if FIGURA_PERIODO.exists():
+        st.image(str(FIGURA_PERIODO), width="stretch",
+                 caption="Curvas simuladas. Ciclos de P alternados em laranja e azul.")
 
 # painel -> (o que ver no exemplo bom, o que ver no exemplo ruim)
 CONTRASTE = {
@@ -179,6 +197,8 @@ def mostrar_guia(st, treino: pd.DataFrame | None, aberto: bool, excluir: str | N
             if painel == "2p":
                 st.divider()
             st.markdown(f"**{titulo}.** {pergunta}")
+            if painel == "2p":
+                mostrar_figura_periodo(st)
             bom, ruim = figs.get(painel, (None, None))
             if not (bom or ruim):
                 continue
