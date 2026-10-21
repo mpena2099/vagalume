@@ -68,6 +68,30 @@ def test_ficha_vsx():
     assert not eh_catalogo_variavel("Variability Upper Limits for Non-Variable Sources")
 
 
+def test_periodo_setores():
+    from src.periodo_setores import medir_periodo_setores
+    rng = np.random.default_rng(3)
+    p_real, fase_sec = 21.3, 0.74
+    curvas = []
+    # setores separados por 18P e 43P: os ciclos nao tem divisor comum, entao nao surge
+    # alias de ciclo inteiro dentro da faixa varrida (0,3 a 3 do periodo de um setor)
+    for inicio in (0.0, 18 * p_real, 43 * p_real):
+        t = np.arange(inicio, inicio + 27, 30 / 1440)
+        fase = ((t - 8.0) / p_real) % 1
+        fluxo = 1 - 0.23 * np.exp(-0.5 * (np.minimum(fase, 1 - fase) / 0.012) ** 2)
+        fluxo -= 0.09 * np.exp(-0.5 * (((fase - fase_sec + 0.5) % 1 - 0.5) / 0.012) ** 2)
+        curvas.append((t, fluxo + rng.normal(0, 0.0015, t.size)))
+
+    r = medir_periodo_setores(curvas, 10.5, eclipse=True)
+    assert abs(r["periodo_d"] / p_real - 1) < 1e-4, r
+    assert 0 < r["periodo_erro_d"] < 1e-3, r
+    assert r["alerta_periodo"] == ""
+    assert abs(r["fase_secundario"] - fase_sec) < 0.02, r
+    # fundos num so setor: nao ha como separar os harmonicos, mantem o periodo de entrada
+    r1 = medir_periodo_setores(curvas[:1], 10.5, eclipse=True)
+    assert r1["periodo_d"] == 10.5 and r1["alerta_periodo"] == "periodo medido em um so setor"
+
+
 def test_teste_llm_visao():
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
     from teste_llm_visao import classe_vsx, ler_resposta

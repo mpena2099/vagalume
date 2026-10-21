@@ -32,6 +32,7 @@ from app.dados import carregar_candidatos
 from config import BLS_FLATTEN_D, LS_FLATTEN_D, SQLITE_PATH, VSX_DIR
 from src.curvas import baixar_curva
 from src.detectar_sinal import _arrays, _flatten
+from src.periodo_setores import medir_periodo_setores
 from src.util import retry
 
 BTJD_PARA_BJD = 2457000.0
@@ -163,18 +164,74 @@ def _figura(tic: int, tempo, fluxo, periodo: float, epoca: float, saida: Path):
     plt.close(fig)
 
 
+def setores_da_candidata(s) -> list[int]:
+    """Setor da candidata mais os extras ("41,75"), sem repetir."""
+    extras = []
+    if pd.notna(s.setores_extra) and str(s.setores_extra).strip():
+        extras = [int(float(x)) for x in str(s.setores_extra).replace(";", ",").split(",")
+                  if x.strip()]
+    return list(dict.fromkeys([int(s.setor), *extras]))
+
+
+def _carregar_setores(s) -> list[tuple[int, object]]:
+    """Curvas cruas por setor. Setor extra sem produto e pulado, nao derruba a ficha."""
+    curvas = []
+    for setor in setores_da_candidata(s):
+        try:
+            lc, _ = baixar_curva(int(s.tic), setor, s.autor)
+        except Exception as e:
+            print(f"  TIC {s.tic}: setor {setor} falhou ({str(e)[:80]}), pulando")
+            continue
+        curvas.append((setor, lc))
+    if not curvas:
+        raise ValueError("nenhum setor disponivel")
+    return curvas
+
+
+def _juntar(curvas) -> tuple[np.ndarray, np.ndarray]:
+    tempo = np.concatenate([t for t, _ in curvas])
+    fluxo = np.concatenate([f for _, f in curvas])
+    ordem = np.argsort(tempo)
+    return tempo[ordem], fluxo[ordem]
+
+
 def montar_ficha(s) -> dict:
     alvo = SkyCoord(s.ra, s.dec, unit="deg")
-    lc, _ = baixar_curva(int(s.tic), int(s.setor), s.autor)
-    tempo, fluxo = _arrays(_flatten(lc, BLS_FLATTEN_D if s.metodo == "bls" else LS_FLATTEN_D))
+    brutas = _carregar_setores(s)
+    janela = BLS_FLATTEN_D if s.metodo == "bls" else LS_FLATTEN_D
+    curvas = [_arrays(_flatten(lc, janela)) for _, lc in brutas]
+    tempo, fluxo = _juntar(curvas)
     periodo, tipo, motivo = sugerir(s.metodo, s.periodo_d, tempo, fluxo)
-    epoca = epoca_minimo(tempo, fluxo, periodo)
+    eclipse = s.metodo == "bls" or tipo in ("EA", "EB")
+    if eclipse and janela != BLS_FLATTEN_D:
+        curvas = [_arrays(_flatten(lc, BLS_FLATTEN_D)) for _, lc in brutas]
+        tempo, fluxo = _juntar(curvas)
+    medido = medir_periodo_setores(curvas, periodo, eclipse)
+    periodo = medido["periodo_d"]
+    epoca = (medido["epoca"] if np.isfinite(medido["epoca"])
+             else epoca_minimo(tempo, fluxo, periodo))
+    if eclipse and not medido["alerta_periodo"]:
+        # o periodo ja vem dos instantes dos eclipses: o tipo sai dele, sem o teste de 2P do
+        # sugerir (que dobrava de novo um periodo ja certo e via "EB" onde e EA)
+        plano = fracao_variando(tempo, fluxo, periodo) < 0.3
+        tipo = "EA" if plano else "EB"
+        sec = medido["fase_secundario"]
+        motivo = (("eclipses estreitos e brilho plano entre eles" if plano
+                   else "brilho varia o tempo todo entre os eclipses")
+                  + ("" if sec is None or not np.isfinite(sec)
+                     else f"; secundario na fase {sec:.3f}"
+                     + (" (orbita excentrica)" if abs(sec - 0.5) > 0.02 else ""))
+                  + f"; periodo pelos instantes dos eclipses em {len(brutas)} setores")
     figura = VSX_DIR / f"{s.tic}_fase.png"
     _figura(int(s.tic), tempo, fluxo, periodo, epoca, figura)
-    ficha = {"tic": int(s.tic), "decisao": s.decisao, "periodo_d": periodo, "tipo_sugerido": tipo,
-             "motivo_tipo": motivo, "epoca_bjd": epoca + BTJD_PARA_BJD,
+    ficha = {"tic": int(s.tic), "decisao": s.decisao, "periodo_d": periodo,
+             "periodo_erro_d": medido["periodo_erro_d"],
+             "alerta_periodo": medido["alerta_periodo"],
+             "fase_secundario": medido["fase_secundario"],
+             "tipo_sugerido": tipo, "motivo_tipo": motivo, "epoca_bjd": epoca + BTJD_PARA_BJD,
              "amplitude_mag_tess": amplitude_dobrada_mag(tempo, fluxo, periodo),
              "setores": ",".join(str(x) for x in [s.setor, s.setores_extra] if pd.notna(x)),
+             "setores_usados": ",".join(str(setor) for setor, _ in brutas),
              "suspeito_blend": bool(s.suspeito_blend), "figura_fase": str(figura),
              "figura_triagem": s.figura}
     ficha.update(_gaia(alvo))
@@ -191,18 +248,24 @@ def _markdown(f: dict) -> str:
         return "?" if v is None or pd.isna(v) else format(v, fmt)
     ztf = ("amplitude grande o bastante: juntar a curva do ZTF/ASAS-SN e usar a magnitude deles"
            if f["amplitude_mag_tess"] > 0.05 else "amplitude pequena para o ZTF: so TESS")
+    periodo = f"{f['periodo_d']:.5f} d"
+    if pd.notna(f.get("periodo_erro_d")):
+        periodo += f" +- {f['periodo_erro_d']:.6f}"
+    secundario = (f"| Secundario | fase {f['fase_secundario']:.3f} |\n"
+                  if pd.notna(f.get("fase_secundario")) else "")
+    alerta = f"**Alerta: {f['alerta_periodo']}**\n\n" if f.get("alerta_periodo") else ""
     return f"""## TIC {f['tic']} ({f['decisao']})
 
-| Campo do VSX | Valor |
+{alerta}| Campo do VSX | Valor |
 |---|---|
 | Posicao (Gaia DR3) | RA {num('gaia_ra', '.6f')}, Dec {num('gaia_dec', '+.6f')} |
 | Outros nomes | TIC {f['tic']}, Gaia DR3 {f.get('gaia_dr3', '?')} |
 | Tipo (sugestao) | {f['tipo_sugerido']}: {f['motivo_tipo']} |
-| Periodo | {f['periodo_d']:.5f} d |
-| Epoca do minimo | BJD {f['epoca_bjd']:.4f} |
+| Periodo | {periodo} |
+{secundario}| Epoca do minimo | BJD {f['epoca_bjd']:.4f} |
 | Magnitude maxima | V {num('v_estimada', '.2f')} (estimada de Gaia G {num('gaia_g', '.2f')} e BP-RP) |
 | Magnitude minima | {f['amplitude_mag_tess']:.3f}, marcar "Minimum is an amplitude", banda "TESS" |
-| Dados | TESS QLP, setores {f['setores']} |
+| Dados | TESS QLP, setores {f.get('setores_usados', f['setores'])} |
 | Anexos | `{f['figura_fase']}` (curva em fase) e `{f['figura_triagem']}` |
 
 - VizieR (catalogos de variaveis a 30"): {f['vizier_variaveis']}
