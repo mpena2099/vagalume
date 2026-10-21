@@ -65,8 +65,15 @@ ordem = st.session_state.treino_ordem
 pos = st.session_state.treino_pos
 feitos = st.session_state.treino_total
 estilo.cabecalho("Treino", (st.session_state.treino_acertos, feitos), "acertos", DESCRICAO)
+# no treino so importa a primeira etapa da trilha: uma linha com o nivel e o que falta
 with sqlite3.connect(SQLITE_PATH) as conn:
-    estilo.trilha_html(dados.marcos(conn, VSX_DIR / "fichas.csv"))
+    _etapa = dados.marcos(conn, VSX_DIR / "fichas.csv")[0]
+    _nivel, _falta = dados.nivel_treino(dados.ler_tentativas(conn))
+st.info(f"**Nível: {_nivel}.** "
+        + ("Treino em dia ✅" if _etapa["feito"]
+           else f"Para \"Treino em dia\" (80% nas últimas 20): {_etapa['detalhe']}.")
+        # com poucas respostas a dica do nivel repete o que falta para a etapa
+        + (f" {_falta[0].upper()}{_falta[1:]}." if _falta and not _falta.startswith("faltam") else ""))
 
 
 def mostrar_historico():
@@ -74,15 +81,12 @@ def mostrar_historico():
     with sqlite3.connect(SQLITE_PATH) as conn:
         h = dados.ler_tentativas(conn)
     r = dados.resumo_treino(h)
-    nivel, falta = dados.nivel_treino(h)
     if r:
         titulo = (f"Seu histórico: {r['geral']:.0%} de acerto em {r['respostas']} "
                   f"{'resposta' if r['respostas'] == 1 else 'respostas'}")
     else:
         titulo = "Seu histórico: ainda sem respostas"
     with st.expander(titulo):
-        st.markdown(f"**Nível: {nivel}**" + (f" &nbsp;·&nbsp; {falta}" if falta else ""),
-                    unsafe_allow_html=True)
         if not r:
             st.caption("Responda os casos abaixo para subir de nível.")
             return
