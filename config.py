@@ -1,7 +1,10 @@
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-SQLITE_PATH = ROOT / "data" / "vagalume.db"
+# VAGALUME_DB aponta para outra copia do banco: testes do app (AppTest) clicam em botoes que
+# gravam decisoes, e no banco real elas viravam revisao de verdade
+SQLITE_PATH = Path(os.environ.get("VAGALUME_DB", ROOT / "data" / "vagalume.db"))
 CURVAS_DIR = ROOT / "data" / "curvas"
 IMG_DIR = ROOT / "docs" / "img"
 

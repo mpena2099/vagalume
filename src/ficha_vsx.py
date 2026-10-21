@@ -149,14 +149,11 @@ def _vizier(alvo: SkyCoord) -> list[str]:
 def _figura(tic: int, tempo, fluxo, periodo: float, epoca: float, saida: Path):
     fase = ((tempo - epoca) / periodo + 0.25) % 1 - 0.25
     mag = -2.5 * np.log10(np.clip(fluxo, 1e-6, None))
-    idx = np.minimum(((fase + 0.25) * 50).astype(int), 49)
-    med = np.array([np.nanmedian(mag[idx == k]) if np.any(idx == k) else np.nan
-                    for k in range(50)])
+    # so pontos, sem linha de mediana: eclipses estreitos (<1% da fase) sumiam na mediana,
+    # e a figura vai anexada ao VSX
     fig, ax = plt.subplots(figsize=(8, 4))
     ax.plot(np.concatenate([fase, fase + 1]), np.concatenate([mag, mag]), ".", ms=1.5,
-            color="0.6", rasterized=True)
-    centros = (np.arange(50) + 0.5) / 50 - 0.25
-    ax.plot(np.concatenate([centros, centros + 1]), np.concatenate([med, med]), "-", color="C3")
+            color="0.3", rasterized=True)
     ax.invert_yaxis()
     ax.set_xlabel(f"fase (P = {periodo:.5f} d, epoca BJD {epoca + BTJD_PARA_BJD:.4f})")
     ax.set_ylabel("delta mag (TESS)")
