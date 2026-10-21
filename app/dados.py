@@ -2,6 +2,7 @@
 
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import quote
 
 import pandas as pd
@@ -223,3 +224,94 @@ def resumo_treino(h: pd.DataFrame, recentes: int = 20) -> dict:
     if not p.empty:
         r["periodo"] = (taxa(p), len(p))
     return r
+
+
+# Marcos manuais ficam fora do to_sql replace pelo mesmo motivo das revisoes.
+_SCHEMA_MARCOS = """
+CREATE TABLE IF NOT EXISTS marcos_manuais (
+    nome TEXT PRIMARY KEY,
+    feito_em TEXT
+)"""
+
+MARCOS_MANUAIS = ("Enviada ao VSX", "Aceita no VSX")
+_ROTULOS_CERTA = {"confirmado": "Confirmado", "duvida": "Dúvida", "descartado": "Descartado"}
+
+
+def marcar(conn: sqlite3.Connection, nome: str, feito: bool) -> None:
+    conn.execute(_SCHEMA_MARCOS)
+    if feito:
+        conn.execute("INSERT OR REPLACE INTO marcos_manuais VALUES (?, ?)",
+                     (nome, datetime.now().isoformat(timespec="seconds")))
+    else:
+        conn.execute("DELETE FROM marcos_manuais WHERE nome = ?", (nome,))
+    conn.commit()
+
+
+def ler_marcos_manuais(conn: sqlite3.Connection) -> set[str]:
+    conn.execute(_SCHEMA_MARCOS)
+    return {r[0] for r in conn.execute("SELECT nome FROM marcos_manuais")}
+
+
+def marcos(conn: sqlite3.Connection, fichas_csv: Path) -> list[dict]:
+    """Etapas do trabalho: acerto e avanco contam, confirmar candidata nao."""
+    r = resumo_treino(ler_tentativas(conn))
+    n = r.get("respostas", 0)
+    if n < 20:
+        treino = {"nome": "Treino em dia", "feito": False, "detalhe": f"faltam {20 - n} respostas"}
+    else:
+        treino = {"nome": "Treino em dia", "feito": r["recentes"] >= 0.8,
+                  "detalhe": f"{r['recentes']:.0%} nas últimas 20"}
+
+    try:
+        cand = carregar_candidatos(conn)
+    except Exception:  # banco recem-criado, sem candidatos_fase7
+        cand = pd.DataFrame()
+    revisadas = int((cand["decisao"] != "pendente").sum()) if not cand.empty else 0
+    fila = {"nome": "Fila revisada", "feito": bool(len(cand)) and revisadas == len(cand),
+            "detalhe": f"{revisadas} de {len(cand)}"}
+
+    prontas = 0
+    existe = Path(fichas_csv).exists()
+    if existe:
+        try:
+            f = pd.read_csv(fichas_csv)
+        except Exception:
+            f = pd.DataFrame()
+        if "decisao" in f.columns:
+            prontas = int((f["decisao"] == "confirmado").sum())
+    if prontas:
+        detalhe_ficha = f"{prontas} confirmada{'s' if prontas != 1 else ''}"
+    else:
+        detalhe_ficha = "nenhuma confirmada ainda" if existe else "rode a Fase 8 depois de confirmar"
+    ficha = {"nome": "Ficha pronta", "feito": prontas > 0, "detalhe": detalhe_ficha}
+
+    manuais = ler_marcos_manuais(conn)
+    return [treino, fila, ficha] + [
+        {"nome": nome, "feito": nome in manuais,
+         "detalhe": "marcado" if nome in manuais else "marque quando acontecer"}
+        for nome in MARCOS_MANUAIS]
+
+
+def nivel_treino(h: pd.DataFrame) -> tuple[str, str]:
+    """Nivel pelo acerto recente e pela constancia entre as respostas certas."""
+    d = h[h["pergunta"] == "decisao"]
+    if len(d) < 20:
+        return "Aprendiz", f"faltam {20 - len(d)} respostas para o próximo nível"
+    recentes = d.tail(20)
+    taxa = float(recentes["pontos"].mean())
+    if taxa < 0.6:
+        return "Aprendiz", (f"acerto nas últimas 20 em {taxa:.0%}: precisa de 60% para "
+                            "o nível Revisor")
+    fracas = {c: float(g["pontos"].mean()) for c, g in recentes.groupby("certa")}
+    fracas = {c: t for c, t in fracas.items() if t < 0.7}
+    if taxa >= 0.8 and not fracas:
+        return "Revisor confiável", ""
+    if taxa < 0.8:
+        return "Revisor", (f"acerto nas últimas 20 em {taxa:.0%}: precisa de 80% para "
+                           "Revisor confiável")
+    c = min(fracas, key=fracas.get)
+    dica = {"descartado": "cuidado com confirmar demais",
+            "confirmado": "cuidado com descartar demais",
+            "duvida": "use a dúvida só quando os painéis não decidem"}
+    return "Revisor", (f"acerto nos casos {_ROTULOS_CERTA.get(c, c)} abaixo de 70%: "
+                       f"{dica.get(c, 'equilibre as respostas')}")

@@ -347,6 +347,60 @@ def test_com_prazo():
         pass
 
 
+def _historico(respostas):
+    conn = sqlite3.connect(":memory:")
+    for i, (certa, pontos) in enumerate(respostas):
+        dados.salvar_tentativa(conn, str(i), "", certa, pontos)
+    return dados.ler_tentativas(conn)
+
+
+def test_nivel_treino():
+    assert dados.nivel_treino(dados.ler_tentativas(sqlite3.connect(":memory:")))[0] == "Aprendiz"
+    # menos de 20 respostas: Aprendiz mesmo acertando tudo
+    nivel, falta = dados.nivel_treino(_historico([("confirmado", 1.0)] * 10))
+    assert nivel == "Aprendiz" and "faltam 10" in falta
+    # 60% nas ultimas 20: Revisor, e o que falta e o acerto recente
+    nivel, falta = dados.nivel_treino(_historico(
+        [("confirmado", 1.0)] * 12 + [("descartado", 0.0)] * 8))
+    assert nivel == "Revisor" and "60%" in falta and "80%" in falta, (nivel, falta)
+    # 80% no total, mas so 60% nos casos Descartado: vies de confirmar demais
+    nivel, falta = dados.nivel_treino(_historico(
+        [("confirmado", 1.0)] * 10 + [("descartado", 1.0)] * 6 + [("descartado", 0.0)] * 4))
+    assert nivel == "Revisor" and "Descartado" in falta and "confirmar demais" in falta
+    # 85% no total e pelo menos 70% em cada resposta certa
+    nivel, falta = dados.nivel_treino(_historico(
+        [("confirmado", 1.0)] * 10 + [("descartado", 1.0)] * 7 + [("descartado", 0.0)] * 3))
+    assert nivel == "Revisor confiável" and falta == ""
+
+
+def test_marcos():
+    import tempfile
+    csv = Path(tempfile.mkdtemp()) / "fichas.csv"
+    conn = sqlite3.connect(":memory:")
+    lista = dados.marcos(conn, csv)
+    assert [m["nome"] for m in lista] == ["Treino em dia", "Fila revisada", "Ficha pronta",
+                                          "Enviada ao VSX", "Aceita no VSX"]
+    assert not any(m["feito"] for m in lista)
+    assert lista[0]["detalhe"] == "faltam 20 respostas" and lista[1]["detalhe"] == "0 de 0"
+
+    pd.DataFrame({"tic": [1, 2], "periodo_d": [1.0, 2.0]}).to_sql("candidatos_fase7", conn)
+    dados.salvar_revisao(conn, 1, "confirmado")
+    dados.salvar_revisao(conn, 2, "descartado")
+    for i in range(20):
+        dados.salvar_tentativa(conn, str(i), "confirmado", "confirmado", 1.0)
+    pd.DataFrame({"tic": [1], "decisao": ["confirmado"]}).to_csv(csv, index=False)
+    dados.marcar(conn, "Enviada ao VSX", True)
+    dados.marcar(conn, "Aceita no VSX", True)
+    lista = dados.marcos(conn, csv)
+    assert all(m["feito"] for m in lista), lista
+    assert lista[0]["detalhe"] == "100% nas últimas 20" and lista[1]["detalhe"] == "2 de 2"
+    assert lista[2]["detalhe"] == "1 confirmada"
+
+    dados.marcar(conn, "Aceita no VSX", False)
+    assert not dados.marcos(conn, csv)[-1]["feito"]
+    assert dados.ler_marcos_manuais(conn) == {"Enviada ao VSX"}
+
+
 if __name__ == "__main__":
     for nome, fn in list(globals().items()):
         if nome.startswith("test_"):

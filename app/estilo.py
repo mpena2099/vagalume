@@ -63,6 +63,18 @@ button[kind="primary"], button[kind="primary"] p {{ color: var(--vl-fundo) !impo
 .vl-pilula {{ display: inline-block; margin-top: .5rem; padding: .12rem .55rem;
   border-radius: 999px; font-size: .78rem; font-weight: 600; }}
 .vl-nota {{ color: var(--vl-suave); font-size: .75rem; margin-top: .35rem; }}
+.vl-trilha {{ display: flex; align-items: flex-start; background: var(--vl-cartao);
+  border: 1px solid var(--vl-borda); border-radius: .8rem; padding: .55rem .4rem;
+  margin-bottom: .8rem; }}
+.vl-etapa {{ flex: 1; min-width: 0; text-align: center; padding: 0 .35rem; position: relative; }}
+.vl-etapa + .vl-etapa::before {{ content: ""; position: absolute; top: .36rem; left: -50%;
+  width: 100%; height: 2px; background: var(--vl-borda); }}
+.vl-etapa.feito::before {{ background: var(--vl-destaque); }}
+.vl-ponto {{ width: .72rem; height: .72rem; border-radius: 50%; margin: 0 auto .3rem;
+  border: 2px solid var(--vl-suave); position: relative; z-index: 1; }}
+.vl-etapa.feito .vl-ponto {{ background: var(--vl-destaque); border-color: var(--vl-destaque); }}
+.vl-etapa-nome {{ font-size: .76rem; font-weight: 600; }}
+.vl-etapa-detalhe {{ color: var(--vl-suave); font-size: .68rem; overflow-wrap: anywhere; }}
 .st-key-figura_p, .st-key-figura_2p, .st-key-figura_mapa, .st-key-figura_unica {{
   background: #F2F4F7; padding: .4rem; border-radius: .6rem; }}
 [data-testid="stImageCaption"] {{ color: var(--vl-suave); font-size: .72rem; }}
@@ -114,3 +126,12 @@ def checklist_html(itens: list[dict], sugestao: str) -> None:
         f'Sugestão do pipeline: {rotulo}</div>'
         f'<div class="vl-nota">A sugestão vale só se a conferência humana da curva dobrada '
         f'em P passar.</div></div>', unsafe_allow_html=True)
+
+
+def trilha_html(marcos: list[dict]) -> None:
+    etapas = "".join(
+        f'<div class="vl-etapa{" feito" if m["feito"] else ""}"><div class="vl-ponto"></div>'
+        f'<div class="vl-etapa-nome">{html.escape(str(m["nome"]))}</div>'
+        f'<div class="vl-etapa-detalhe">{html.escape(str(m["detalhe"]))}</div></div>'
+        for m in marcos)
+    st.markdown(f'<div class="vl-trilha">{etapas}</div>', unsafe_allow_html=True)

@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from app import dados, estilo, execucao, guia
-from config import SQLITE_PATH
+from config import SQLITE_PATH, VSX_DIR
 
 ORDENACOES = {
     "Sinal mais forte primeiro (amplitude / ruído)": [("forca", False)],
@@ -60,6 +60,11 @@ def pedir_confirmacao(sim: bool):
 
 def esquecer_busca():
     execucao.LOG.unlink(missing_ok=True)
+
+
+def marcar_marco(nome: str):
+    with conectar() as conn:
+        dados.marcar(conn, nome, bool(st.session_state.get(f"marco_{nome}")))
 
 
 def botao_buscar(chave: str):
@@ -152,6 +157,13 @@ if todos.empty:
 
 revisados = int((todos["decisao"] != "pendente").sum())
 estilo.cabecalho("Revisão visual", (revisados, len(todos)), "revisados", DESCRICAO)
+with conectar() as conn:
+    estilo.trilha_html(dados.marcos(conn, VSX_DIR / "fichas.csv"))
+    manuais = dados.ler_marcos_manuais(conn)
+with st.expander("Marcar envio ao VSX"):
+    for nome in dados.MARCOS_MANUAIS:
+        st.checkbox(nome, value=nome in manuais, key=f"marco_{nome}",
+                    on_change=marcar_marco, args=(nome,))
 pendentes = len(todos) - revisados
 painel_busca(pendentes)
 if pendentes and not execucao.rodando():

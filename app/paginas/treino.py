@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from app import dados, estilo, guia
-from config import SQLITE_PATH
+from config import SQLITE_PATH, VSX_DIR
 
 DESCRICAO = ("Casos de resposta conhecida, para aprender a decidir antes da revisão de verdade. "
              "Você responde, vê a resposta certa com a explicação e onde estava a pista. Nada "
@@ -65,16 +65,27 @@ ordem = st.session_state.treino_ordem
 pos = st.session_state.treino_pos
 feitos = st.session_state.treino_total
 estilo.cabecalho("Treino", (st.session_state.treino_acertos, feitos), "acertos", DESCRICAO)
+with sqlite3.connect(SQLITE_PATH) as conn:
+    estilo.trilha_html(dados.marcos(conn, VSX_DIR / "fichas.csv"))
 
 
 def mostrar_historico():
     """Aproveitamento de todas as sessoes, gravado no banco."""
     with sqlite3.connect(SQLITE_PATH) as conn:
-        r = dados.resumo_treino(dados.ler_tentativas(conn))
-    if not r:
-        return
-    with st.expander(f"Seu histórico: {r['geral']:.0%} de acerto em {r['respostas']} "
-                     f"{'resposta' if r['respostas'] == 1 else 'respostas'}"):
+        h = dados.ler_tentativas(conn)
+    r = dados.resumo_treino(h)
+    nivel, falta = dados.nivel_treino(h)
+    if r:
+        titulo = (f"Seu histórico: {r['geral']:.0%} de acerto em {r['respostas']} "
+                  f"{'resposta' if r['respostas'] == 1 else 'respostas'}")
+    else:
+        titulo = "Seu histórico: ainda sem respostas"
+    with st.expander(titulo):
+        st.markdown(f"**Nível: {nivel}**" + (f" &nbsp;·&nbsp; {falta}" if falta else ""),
+                    unsafe_allow_html=True)
+        if not r:
+            st.caption("Responda os casos abaixo para subir de nível.")
+            return
         metricas = [("Geral", f"{r['geral']:.0%}", None,
                      f"{r['respostas']} respostas em {r['dias']} dia(s)"),
                     (f"Últimas {r['n_recentes']}", f"{r['recentes']:.0%}",
