@@ -304,6 +304,7 @@ def test_estado_execucao():
     assert estado(log + "\nERRO em Fase 4 - Detectar sinal: timeout\n")["erro"].startswith("ERRO em")
     assert estado(log + "  Campo x registrado em campos_feitos.\n")["terminou"]
     assert estado("  A grade de campos acabou: todos\n")["fim_da_grade"]
+    assert not e["cancelada"] and estado(log + "\nBusca cancelada pelo app.\n")["cancelada"]
 
 
 def test_com_prazo():

@@ -49,8 +49,13 @@ def limpar(tic: int):
 
 
 def buscar():
+    st.session_state.confirmar_busca = False
     if not execucao.rodando():  # clique duplo nao abre duas buscas
         execucao.iniciar()
+
+
+def pedir_confirmacao(sim: bool):
+    st.session_state.confirmar_busca = sim
 
 
 def esquecer_busca():
@@ -58,7 +63,17 @@ def esquecer_busca():
 
 
 def botao_buscar(chave: str):
-    st.button("Buscar mais candidatas", type="primary", on_click=buscar, key=chave)
+    # dois passos: um clique sem querer nao dispara 1 a 2 horas de rede
+    if st.session_state.get("confirmar_busca"):
+        st.warning("A busca leva 1 a 2 horas e baixa curvas de ~500 estrelas. Começar agora?")
+        sim, nao = st.columns(2)
+        sim.button("Sim, buscar", type="primary", on_click=buscar, key=f"{chave}_sim",
+                   width="stretch")
+        nao.button("Não", on_click=pedir_confirmacao, args=(False,), key=f"{chave}_nao",
+                   width="stretch")
+    else:
+        st.button("Buscar mais candidatas", type="primary", on_click=pedir_confirmacao,
+                  args=(True,), key=chave)
     st.caption("Escolhe sozinho uma região do céu ainda não varrida e roda o pipeline "
                "inteiro (1 a 2 horas). Pode fechar a página: a busca continua. "
                "Pelo terminal, na pasta do projeto:")
@@ -71,7 +86,7 @@ def progresso():
         st.rerun()  # terminou: recarrega a pagina inteira com as candidatas novas
     log = execucao.ler_log()
     e = execucao.estado(log)
-    if not log or e["terminou"] or e["erro"]:  # log de outra rodada: esta veio do terminal
+    if not log or e["terminou"] or e["erro"] or e["cancelada"]:  # log antigo: veio do terminal
         st.info("Uma busca de candidatas está rodando, iniciada pelo terminal: o progresso "
                 "aparece lá. As candidatas novas entram na fila quando ela terminar.")
         return
@@ -89,6 +104,9 @@ def progresso():
                    + "Pode fechar a página: a busca continua e as candidatas novas entram na fila.")
         with st.expander("Ver o log"):
             st.code("\n".join(execucao.ler_log().splitlines()[-15:]) or "(vazio)")
+        st.button("Cancelar busca", on_click=execucao.cancelar,
+                  help="Encerra agora. Esta região é refeita do início na próxima busca; "
+                       "suas decisões não são tocadas.")
 
 
 def painel_busca(pendentes: int):
@@ -104,6 +122,9 @@ def painel_busca(pendentes: int):
         st.error(f"A última busca parou ({e['erro']}). Tentar de novo refaz a mesma região.")
         botao_buscar("buscar_erro")
         return
+    elif e["cancelada"]:
+        st.info("Busca cancelada. A região interrompida é refeita do início na próxima busca.")
+        st.button("Ok", on_click=esquecer_busca)
     elif e["terminou"]:
         st.success(f"Busca terminou{' no campo ' + e['campo'] if e['campo'] else ''}. "
                    "As candidatas novas já estão na fila.")

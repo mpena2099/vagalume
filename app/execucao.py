@@ -7,6 +7,7 @@ log a cada poucos segundos.
 
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -16,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 LOG = ROOT / "data" / "pipeline.log"
 COMANDO = "python -u pipeline.py --proximo"
 FIM = "registrado em campos_feitos"
+CANCELADA = "Busca cancelada pelo app."
 
 
 def _processos() -> list[int]:
@@ -43,6 +45,22 @@ def iniciar() -> None:
                          start_new_session=True)
 
 
+def cancelar() -> None:
+    """Encerra a busca e o que ela abriu. O campo nao entra em campos_feitos: na proxima
+    busca ele e refeito do inicio, e as decisoes da revisao nao sao tocadas."""
+    for pid in _processos():
+        try:
+            # iniciada pelo app: sessao propria, o grupo leva junto os downloads paralelos
+            if os.getpgid(pid) == pid:
+                os.killpg(pid, signal.SIGTERM)
+            else:
+                os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            continue
+    with open(LOG, "a", encoding="utf-8") as saida:
+        saida.write(f"\n{CANCELADA}\n")
+
+
 def ler_log() -> str:
     try:
         return LOG.read_text(encoding="utf-8", errors="replace")
@@ -61,7 +79,8 @@ def estado(log: str) -> dict:
     """Fase atual, progresso (i de N), campo, erro e fim, tirados do texto do log."""
     linhas = [x.strip() for x in log.splitlines() if x.strip()]
     e = {"fase": None, "progresso": None, "campo": None, "erro": None,
-         "terminou": any(FIM in x for x in linhas), "fim_da_grade": False}
+         "terminou": any(FIM in x for x in linhas), "fim_da_grade": False,
+         "cancelada": any(x.startswith(CANCELADA) for x in linhas)}
     for x in linhas:
         if x.startswith("Executando:"):
             e["fase"], e["progresso"] = x.split(":", 1)[1].strip(), None
