@@ -42,6 +42,11 @@ button[kind="primary"], button[kind="primary"] p {{ color: var(--vl-fundo) !impo
 .vl-subtitulo {{ font-size: 1rem; font-weight: 600; margin-top: .25rem; }}
 .vl-descricao {{ color: var(--vl-suave); font-size: .85rem; margin-top: .2rem; max-width: 46rem; }}
 .vl-progresso {{ min-width: 170px; text-align: right; }}
+/* celular: marca e descricao em cima, progresso embaixo, cada um com a largura toda */
+@media (max-width: 640px) {{
+  .vl-cabecalho {{ flex-direction: column; align-items: stretch; gap: .8rem; }}
+  .vl-progresso {{ width: 100%; min-width: 0; text-align: left; }}
+}}
 .vl-progresso-texto {{ font-size: .9rem; margin-bottom: .35rem; }}
 .vl-barra {{ height: 5px; background: var(--vl-borda); border-radius: 999px; overflow: hidden; }}
 .vl-barra span {{ display: block; height: 100%; background: var(--vl-destaque); }}
