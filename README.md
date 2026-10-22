@@ -2,8 +2,6 @@
 
 [![testes](https://github.com/mpena2099/vagalume/actions/workflows/testes.yml/badge.svg)](https://github.com/mpena2099/vagalume/actions/workflows/testes.yml)
 
-[![testes](https://github.com/mpena2099/vagalume/actions/workflows/testes.yml/badge.svg)](https://github.com/mpena2099/vagalume/actions/workflows/testes.yml)
-
 Pipeline pessoal de mineração de dados astronômicos que procura **estrelas variáveis ainda não catalogadas** nas curvas de luz públicas do satélite **TESS** (NASA), descarta as já conhecidas e entrega candidatas prontas para submissão ao **VSX**, o catálogo internacional de estrelas variáveis da AAVSO.
 
 ![Ilustração artística de uma binária eclipsante](docs/img/eso1311a.jpg)
