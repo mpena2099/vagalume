@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -12,13 +13,23 @@ import pandas as pd
 import streamlit as st
 
 from app import dados, estilo, guia
-from config import SQLITE_PATH, TREINO_DIR, VSX_DIR
+from config import DEMO, SQLITE_PATH, TREINO_DIR, VSX_DIR
 
 DESCRICAO = ("Casos de resposta conhecida, para aprender a decidir antes da revisão de verdade. "
              "Você responde, vê a resposta certa com a explicação e onde estava a pista. Nada "
              "muda nas candidatas; só o seu histórico de acertos é gravado.")
 ROTULOS = {"confirmado": "Confirmado", "duvida": "Dúvida", "descartado": "Descartado"}
 
+
+
+def conectar_historico() -> sqlite3.Connection:
+    """Banco das respostas. Na demo online, um arquivo por visitante: o banco do repo e
+    compartilhado entre todos e nao pode receber o historico de ninguem."""
+    if not DEMO:
+        return sqlite3.connect(SQLITE_PATH)
+    if "demo_historico" not in st.session_state:
+        st.session_state.demo_historico = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+    return sqlite3.connect(st.session_state.demo_historico)
 
 def _painel(figura: Path, nome: str) -> Path:
     return figura.with_name(f"{figura.stem}_{nome}.png")
@@ -64,6 +75,9 @@ def comecar(treino: pd.DataFrame):
 try:
     with sqlite3.connect(SQLITE_PATH) as conn:
         treino = pd.read_sql("SELECT * FROM treino WHERE resposta != 'ambiguo'", conn)
+    if DEMO:
+        # na demo as figuras vem com caminho relativo a raiz do repositorio
+        treino["figura"] = [str(ROOT / f) for f in treino["figura"]]
 except Exception:
     estilo.cabecalho("Treino", descricao=DESCRICAO)
     st.info("A tabela `treino` ainda não existe. Crie o conjunto com:\n\n"
@@ -84,7 +98,7 @@ pos = st.session_state.treino_pos
 feitos = st.session_state.treino_total
 estilo.cabecalho("Treino", (st.session_state.treino_acertos, feitos), "acertos", DESCRICAO)
 # no treino so importa a primeira etapa da trilha: uma linha com o nivel e o que falta
-with sqlite3.connect(SQLITE_PATH) as conn:
+with conectar_historico() as conn:
     _etapa = dados.marcos(conn, VSX_DIR / "fichas.csv")[0]
     _nivel, _falta = dados.nivel_treino(dados.ler_tentativas(conn))
 st.info(f"**Nível: {_nivel}.** "
@@ -96,7 +110,7 @@ st.info(f"**Nível: {_nivel}.** "
 
 def mostrar_historico():
     """Aproveitamento de todas as sessoes, gravado no banco."""
-    with sqlite3.connect(SQLITE_PATH) as conn:
+    with conectar_historico() as conn:
         h = dados.ler_tentativas(conn)
     r = dados.resumo_treino(h)
     if r:
@@ -141,7 +155,7 @@ caso = ordem.iloc[pos]
 
 
 def _gravar(escolha: str, certa: str, pontos: float, pergunta: str = "decisao"):
-    with sqlite3.connect(SQLITE_PATH) as conn:
+    with conectar_historico() as conn:
         dados.salvar_tentativa(conn, f"{int(caso['tic'])}_{caso['metodo']}", escolha, certa,
                                pontos, pergunta)
 

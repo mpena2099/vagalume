@@ -5,6 +5,8 @@ ROOT = Path(__file__).parent
 # VAGALUME_DB aponta para outra copia do banco: testes do app (AppTest) clicam em botoes que
 # gravam decisoes, e no banco real elas viravam revisao de verdade
 SQLITE_PATH = Path(os.environ.get("VAGALUME_DB", ROOT / "data" / "vagalume.db"))
+# demo online (app/demo.py): so o treino, com banco e figuras pequenos no repo e historico por sessao
+DEMO = os.environ.get("VAGALUME_DEMO") == "1"
 CURVAS_DIR = ROOT / "data" / "curvas"
 IMG_DIR = ROOT / "docs" / "img"
 
@@ -100,7 +102,7 @@ TRIAGEM_RECORTE_PX = 11
 DESLOCAMENTO_MAX_PX = 1.0
 
 # modo treino do app (tools/gerar_treino.py)
-TREINO_DIR = ROOT / "data" / "treino"
+TREINO_DIR = ROOT / ("demo" if DEMO else "data") / "treino"
 
 # Fase 8: fichas de submissao ao VSX (src/ficha_vsx.py, manual)
 VSX_DIR = ROOT / "data" / "vsx"
