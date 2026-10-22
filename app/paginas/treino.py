@@ -30,7 +30,7 @@ def _texto(v, formato: str) -> str:
 
 def _amplitude(r) -> float:
     try:
-        return float(json.loads((TREINO_DIR / f"{r.tic}_{r.metodo}.json").read_text())["amplitude"])
+        return float(json.loads((TREINO_DIR / f"{r.tic}_{r.metodo}.json").read_text(encoding="utf-8"))["amplitude"])
     except (OSError, ValueError, KeyError, TypeError):
         return 0.0
 

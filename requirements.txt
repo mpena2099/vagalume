@@ -6,3 +6,4 @@ matplotlib==3.10.9
 httpx==0.28.1
 lightkurve==2.6.0
 streamlit==1.65.0
+psutil==7.0.0

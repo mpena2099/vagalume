@@ -94,7 +94,7 @@ def _chave() -> str:
     if os.environ.get(LLM_VISAO_CHAVE_ENV):
         return os.environ[LLM_VISAO_CHAVE_ENV]
     auth = Path.home() / ".local" / "share" / "opencode" / "auth.json"
-    return json.loads(auth.read_text())[LLM_VISAO_CHAVE_PROVEDOR]["key"]
+    return json.loads(auth.read_text(encoding="utf-8"))[LLM_VISAO_CHAVE_PROVEDOR]["key"]
 
 
 class CotaEsgotada(Exception):

@@ -51,7 +51,7 @@ As oito fases estão implementadas (a 8, ficha do VSX, roda à mão depois da re
 ## Uso
 
 ```bash
-python3 -m venv venv && source venv/bin/activate
+python3 -m venv venv && source venv/bin/activate   # Linux e macOS
 pip install -r requirements.txt
 python -u pipeline.py           # campo fixo do config.py (fases 1 a 7 e casos do treino)
 python -u pipeline.py --proximo # escolhe sozinho o próximo campo do céu e roda tudo
@@ -59,6 +59,13 @@ python tests/test_units.py      # testes offline (ou pytest)
 streamlit run app/revisao.py    # revisão visual das candidatas
 python src/ficha_vsx.py         # Fase 8: fichas do VSX das confirmadas (--duvidas, --todas)
 ```
+
+No Windows (PowerShell), crie e ative o ambiente assim; o resto dos comandos é igual:
+
+```powershell
+py -m venv venv; venv\Scripts\Activate.ps1
+```
+
 
 `-u` faz o Python escrever cada `print` na hora. No terminal isso já acontece, mas com a saída redirecionada (`> log.txt`, `| tee log.txt`, `nohup`) o Python junta tudo em blocos e o log fica parado por minutos, parecendo travado, nas fases longas.
 
