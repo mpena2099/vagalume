@@ -41,6 +41,9 @@ def registrar(tic: int, decisao: str, total: int, fica_na_lista: bool):
     # pra posicao atual: avancar aqui pularia uma sem mostrar.
     if fica_na_lista:
         mover(+1, total)
+    else:
+        # a lista encolheu: conta as decisoes para o numero da posicao seguir avancando
+        st.session_state.decididos = st.session_state.get("decididos", 0) + 1
 
 
 def limpar(tic: int):
@@ -194,6 +197,7 @@ assinatura = (situacao, ordem, busca.strip())
 if st.session_state.get("assinatura") != assinatura:
     st.session_state.assinatura = assinatura
     st.session_state.pos = 0
+    st.session_state.decididos = 0
 st.session_state.pos = max(0, min(total - 1, st.session_state.get("pos", 0)))
 
 # ---------------------------------------------------------------- candidata
@@ -203,8 +207,9 @@ tic = int(r["tic"])
 nav = st.columns([1, 1, 5], vertical_alignment="center")
 nav[0].button("◀ Anterior", on_click=mover, args=(-1, total), width="stretch")
 nav[1].button("Próximo ▶", on_click=mover, args=(+1, total), width="stretch")
+_ja = st.session_state.get("decididos", 0)
 nav[2].markdown(
-    f"**{st.session_state.pos + 1} de {total}** &nbsp;·&nbsp; TIC {tic} "
+    f"**{_ja + st.session_state.pos + 1} de {_ja + total}** &nbsp;·&nbsp; TIC {tic} "
     f"&nbsp;·&nbsp; RA {r['ra']:.5f} &nbsp;·&nbsp; Dec {r['dec']:+.5f}",
     unsafe_allow_html=True)
 
