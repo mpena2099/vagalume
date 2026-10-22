@@ -8,6 +8,10 @@ Pipeline pessoal de mineração de dados astronômicos que procura **estrelas va
 
 *Ilustração artística de uma binária eclipsante: duas estrelas em órbita passam uma na frente da outra, e o brilho somado cai a cada eclipse. Crédito: ESO/L. Calçada, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).*
 
+![Página de treino do Vagalume](docs/img/app_treino.png)
+
+*O modo treino, com casos de resposta conhecida: o guia mostra o que procurar em cada painel, com um exemplo bom e um ruim tirados de variáveis já catalogadas.*
+
 ## English summary
 
 Vagalume is a personal data-mining pipeline that searches public **TESS** light curves for **uncatalogued variable stars**, aiming at submissions to the AAVSO **VSX** catalogue. Seven sequential phases share state through SQLite: a sanity check that recovers known variables (WASP-18 b and two eclipsing binaries, periods within 0.1%), target selection from one TESS sector, light-curve download (QLP/TESS-SPOC via MAST), period search (Lomb-Scargle and BLS), cross-match against VSX, ATLAS, TESS-EBs, other TESS variability catalogues (including Wang+2025 from China-VO), Gaia DR2/DR3, ZTF, ASAS-SN, TOI and SIMBAD, a contamination check (variable neighbours, Gaia blends, persistence across other sectors) and one diagnostic figure per candidate, including a per-pixel signal map. A local Streamlit app supports human review. First run (sector 55, Cygnus, 500 stars): 39 periodic signals, 13 not found in any variable-star catalogue within 30", 9 candidates awaiting visual review. Code and docs are in Portuguese; `config.py` holds every parameter. Run with `python pipeline.py` (or `--proximo` to pick the next sky field automatically); offline tests with `python tests/test_units.py`.
@@ -47,6 +51,16 @@ O envio ao VSX é manual (não há API): copie os campos da ficha para o formul�
 ## Estado
 
 As oito fases estão implementadas (a 8, ficha do VSX, roda à mão depois da revisão). A Fase 1 redescobre WASP-18 b, uma binária eclipsante destacada e uma de contato, com o período dentro de 0,1% da referência. A primeira varredura, no setor 55 (Cygnus, plano da Via Láctea), processou 500 estrelas: 39 com sinal periódico, 13 sem variável catalogada a menos de 30" e 9 candidatas depois da checagem de vizinhas e da repetição em outros setores. Elas aguardam a revisão visual. Detalhes técnicos, cortes, catálogos e riscos em [`especificacao.md`](especificacao.md).
+
+## Achados
+
+O que o projeto encontrou até agora, inclusive o que não deu certo:
+
+| Achado | Estágio | O que ensinou |
+|---|---|---|
+| Teste de sanidade: WASP-18 b, uma binária eclipsante destacada e uma de contato são redescobertas com o período a menos de 0,1% da referência | Feito a cada execução | A detecção de período funciona nos três tipos de sinal |
+| Setor 55 (Cygnus): 500 estrelas, 39 com sinal periódico, 13 sem variável catalogada a menos de 30", 9 candidatas | Em revisão visual | A checagem de estrelas vizinhas e a repetição em outros setores cortam a maior parte |
+| Uma candidata, a TIC 64711184, já estava publicada como pulsante SPB (catálogo J/ApJS/268/16), fora das listas que o pipeline cruzava | Saiu da fila: o catálogo entrou no cruzamento | Daí veio a busca no VizieR inteiro antes da ficha do VSX, e os catálogos achados assim passaram a ser cruzados |
 
 ## Uso
 
