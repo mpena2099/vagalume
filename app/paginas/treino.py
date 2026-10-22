@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from app import dados, estilo, guia
-from config import SQLITE_PATH, VSX_DIR
+from config import SQLITE_PATH, TREINO_DIR, VSX_DIR
 
 DESCRICAO = ("Casos de resposta conhecida, para aprender a decidir antes da revisão de verdade. "
              "Você responde, vê a resposta certa com a explicação e onde estava a pista. Nada "
@@ -28,11 +28,28 @@ def _texto(v, formato: str) -> str:
     return "—" if v is None or pd.isna(v) else formato.format(v)
 
 
+def _amplitude(r) -> float:
+    try:
+        return float(json.loads((TREINO_DIR / f"{r.tic}_{r.metodo}.json").read_text())["amplitude"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0.0
+
+
 def comecar(treino: pd.DataFrame):
     # mesmo numero de casos por resposta: senao responder sempre a classe maior pontua bem;
     # sem semente fixa, cada sessao sorteia outros casos
     n = int(treino["resposta"].value_counts().min())
-    equilibrado = treino.groupby("resposta", group_keys=False).sample(n=n)
+    partes = []
+    for _, grupo in treino.groupby("resposta"):
+        if len(grupo) > n:
+            # os confirmados tem sinal forte; sortear metade dos descartados entre os de maior
+            # amplitude deixa o quiz mais parecido com a fila, onde o sinal fraco e a regra
+            grupo = grupo.assign(amp=[_amplitude(r) for r in grupo.itertuples()]).sort_values("amp")
+            fracos, fortes = grupo.iloc[:len(grupo) // 2], grupo.iloc[len(grupo) // 2:]
+            n_fortes = min(len(fortes), (n + 1) // 2)
+            grupo = pd.concat([fortes.sample(n_fortes), fracos.sample(n - n_fortes)])
+        partes.append(grupo)
+    equilibrado = pd.concat(partes)
     st.session_state.treino_ordem = equilibrado.sample(frac=1).reset_index(drop=True)
     st.session_state.treino_pos = 0
     st.session_state.treino_acertos = 0.0
