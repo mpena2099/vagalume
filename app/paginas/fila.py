@@ -44,6 +44,7 @@ def registrar(tic: int, decisao: str, total: int, fica_na_lista: bool):
     else:
         # a lista encolheu: conta as decisoes para o numero da posicao seguir avancando
         st.session_state.decididos = st.session_state.get("decididos", 0) + 1
+    st.session_state.subir = True
 
 
 def limpar(tic: int):
@@ -204,6 +205,9 @@ st.session_state.pos = max(0, min(total - 1, st.session_state.get("pos", 0)))
 r = lista.iloc[st.session_state.pos].to_dict()
 tic = int(r["tic"])
 
+estilo.ancora_caso()
+if st.session_state.pop("subir", False):
+    estilo.subir_ao_caso()
 nav = st.columns([1, 1, 5], vertical_alignment="center")
 nav[0].button("◀ Anterior", on_click=mover, args=(-1, total), width="stretch")
 nav[1].button("Próximo ▶", on_click=mover, args=(+1, total), width="stretch")
