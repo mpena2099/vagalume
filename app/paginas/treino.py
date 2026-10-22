@@ -29,10 +29,11 @@ def _texto(v, formato: str) -> str:
 
 
 def comecar(treino: pd.DataFrame):
-    # mesmo numero de casos por resposta: senao responder sempre a classe maior pontua bem
+    # mesmo numero de casos por resposta: senao responder sempre a classe maior pontua bem;
+    # sem semente fixa, cada sessao sorteia outros casos
     n = int(treino["resposta"].value_counts().min())
-    equilibrado = treino.groupby("resposta", group_keys=False).sample(n=n, random_state=42)
-    st.session_state.treino_ordem = equilibrado.sample(frac=1, random_state=42).reset_index(drop=True)
+    equilibrado = treino.groupby("resposta", group_keys=False).sample(n=n)
+    st.session_state.treino_ordem = equilibrado.sample(frac=1).reset_index(drop=True)
     st.session_state.treino_pos = 0
     st.session_state.treino_acertos = 0.0
     st.session_state.treino_total = 0
