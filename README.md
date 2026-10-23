@@ -72,7 +72,7 @@ pip install -r requirements.txt
 python -u pipeline.py           # campo fixo do config.py (fases 1 a 7 e casos do treino)
 python -u pipeline.py --proximo # escolhe sozinho o próximo campo do céu e roda tudo
 python tests/test_units.py      # testes offline (ou pytest)
-streamlit run app/revisao.py    # revisão visual das candidatas
+python iniciar.py               # revisão visual das candidatas (usa o venv sozinho; --demo abre só o treino)
 python src/ficha_vsx.py         # Fase 8: fichas do VSX das confirmadas (--duvidas, --todas)
 ```
 
