@@ -80,7 +80,8 @@ button[kind="primary"], button[kind="primary"] p {{ color: var(--vl-fundo) !impo
 .vl-etapa.feito .vl-ponto {{ background: var(--vl-destaque); border-color: var(--vl-destaque); }}
 .vl-etapa-nome {{ font-size: .76rem; font-weight: 600; }}
 .vl-etapa-detalhe {{ color: var(--vl-suave); font-size: .68rem; overflow-wrap: anywhere; }}
-.st-key-figura_p, .st-key-figura_2p, .st-key-figura_mapa, .st-key-figura_unica {{
+.st-key-figura_curva, .st-key-figura_p, .st-key-figura_2p, .st-key-figura_mapa,
+.st-key-figura_unica {{
   background: #F2F4F7; padding: .4rem; border-radius: .6rem; }}
 [data-testid="stImageCaption"] {{ color: var(--vl-suave); font-size: .72rem; }}
 </style>"""

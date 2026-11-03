@@ -28,7 +28,8 @@ FIGURAS.mkdir(parents=True)
 novas = []
 for f in treino["figura"]:
     f = Path(f)
-    for nome in (f"{f.stem}_p.png", f"{f.stem}_mapa.png", f"{f.stem}_2p.png", f"{f.stem}.json"):
+    for nome in (f"{f.stem}_curva.png", f"{f.stem}_p.png", f"{f.stem}_mapa.png",
+                 f"{f.stem}_2p.png", f"{f.stem}.json"):
         if (f.parent / nome).exists():
             shutil.copy2(f.parent / nome, FIGURAS / nome)
     novas.append(str((FIGURAS / f.name).relative_to(ROOT)))

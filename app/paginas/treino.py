@@ -179,9 +179,9 @@ r = json.loads(dados_json.read_text(encoding="utf-8")) if dados_json.exists() el
 
 
 if _painel(figura, "p").exists():
-    cols = st.columns(2)
+    cols = st.columns(3)
     legendas = {k: f"**{titulo}.** {pergunta}" for k, (titulo, pergunta) in guia.ROTEIRO.items()}
-    for col, nome in zip(cols, ("p", "mapa")):
+    for col, nome in zip(cols, ("curva", "p", "mapa")):
         caminho = _painel(figura, nome)
         if caminho.exists():
             with col.container(key=f"figura_{nome}"):
