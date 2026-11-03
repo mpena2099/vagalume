@@ -18,22 +18,17 @@ LEITURA = ("**Como ler as curvas dobradas.** Cada ponto laranja é uma medida de
            "relativo (1,00 é o normal da estrela, 0,95 é 5% mais fraca). Eixo horizontal: fase, "
            "com 0 no momento mais fraco. Período certo: os ciclos se encaixam e os pontos colam "
            "na linha. Período errado ou ruído: faixa espalhada e linha tremida.\n\n"
-           "**O que decide.** Confirmar ou Descartar depende só dos painéis 1 (a variação se "
-           "repete no tempo?), 2 (a curva em P tem forma clara?) e 3 (o sinal sai da estrela "
-           "alvo?). A curva em 2P "
+           "**O que decide.** Confirmar ou Descartar depende só dos painéis 1 (a curva em P "
+           "tem forma clara que se repete?) e 2 (o sinal sai da estrela alvo?). A curva em 2P "
            "fica para depois de confirmar: serve só para escolher o período da ficha do VSX.")
 
 # painel -> (titulo, pergunta que o revisor responde olhando a imagem)
 ROTEIRO = {
-    "curva": ("1. Curva de luz no tempo",
-              "Conte as quedas (ou ondas) ao longo do setor. Elas se repetem pelo menos 3 "
-              "vezes, com a mesma distância entre uma e outra? Duas ou três quedas isoladas "
-              "não dão período confiável, mesmo que sejam fundas."),
-    "p": ("2. Curva dobrada em P",
+    "p": ("1. Curva dobrada em P",
           "Os pontos formam uma linha fina com desenho que se repete (um vale, uma onda), "
           "ou uma faixa larga e sem forma? Olhe também a escala do eixo vertical: de 0,994 "
           "a 1,006 é uma variação de 0,6%, perto do ruído."),
-    "mapa": ("3. Mapa do sinal por pixel",
+    "mapa": ("2. Mapa do sinal por pixel",
              "O x vermelho (onde o sinal é mais forte) está em cima do + verde (a estrela "
              "alvo)? Se está sobre outro círculo azul, o sinal vem da vizinha."),
 }
@@ -68,9 +63,6 @@ def mostrar_figura_periodo(st) -> None:
 
 # painel -> (o que ver no exemplo bom, o que ver no exemplo ruim)
 CONTRASTE = {
-    "curva": ("Quedas iguais que voltam várias vezes, sempre com a mesma distância entre "
-              "elas: dá para contar os ciclos.",
-              "Só duas quedas no setor inteiro: a distância entre elas não prova período."),
     "p": ("Linha preta com forma clara e pontos colados nela: os ciclos caem uns sobre os "
           "outros.",
           "Nuvem de pontos da mesma largura em todas as fases e linha preta tremida sem "
@@ -95,8 +87,7 @@ def exemplos(treino: pd.DataFrame, excluir: str | None = None) -> dict[str, tupl
     """
     treino = treino[treino["figura"] != excluir]
     numeros = pd.DataFrame([_dados(f) for f in treino["figura"]], index=treino.index)
-    t = pd.concat([treino, numeros.reindex(columns=["forca", "deslocamento_px", "n_ciclos"])],
-                  axis=1)
+    t = pd.concat([treino, numeros.reindex(columns=["forca", "deslocamento_px"])], axis=1)
     bons, ruins = t[t["resposta"] == "confirmado"], t[t["resposta"] == "descartado"]
 
     def topo(df, coluna, maior):
@@ -106,12 +97,7 @@ def exemplos(treino: pd.DataFrame, excluir: str | None = None) -> dict[str, tupl
     ruido = ruins[ruins["explicacao"].str.contains("ruído", na=False)]
     # catalogo com o dobro do periodo medido: o periodo real e 2P
     dobro = bons[bons["explicacao"].str.contains(r"razão 2\.0", na=False)]
-    # bom da curva: poucos ciclos (contaveis a olho), mas pelo menos 4
-    contaveis = bons[bons["n_ciclos"].between(4, 12)]
-    poucos = ruins[ruins["explicacao"].str.contains("ciclos", na=False)]
     return {
-        "curva": (topo(contaveis if not contaveis.empty else bons, "forca", True),
-                  topo(poucos, "forca", True)),
         "p": (topo(bons, "forca", True), topo(ruido if not ruido.empty else ruins, "forca", False)),
         "2p": (topo(dobro if not dobro.empty else bons, "forca", True),
                topo(ruido if not ruido.empty else ruins, "forca", False)),
@@ -138,8 +124,8 @@ def pista(r: dict, resposta: str, explicacao: str) -> str:
         return (f"Olhe a curva dobrada em P: faixa larga sem desenho{f}. Repare também na "
                 f"escala vertical, muito estreita.{extra}")
     if "ciclos" in explicacao:
-        return ("Olhe o painel 1, a curva no tempo: só dois ou três eventos isolados. "
-                "Sem repetição não há período confiável para submeter.")
+        return ("Olhe o item \"Ciclos no setor\" do checklist: menos de 3 ciclos. Duas ou três "
+                "quedas não provam um período, mesmo que sejam fundas.")
     if "não se repete" in explicacao:
         extra = (f" O mapa ajuda: o x vermelho está a {d:.1f} px do + verde." if longe else "")
         return ("O motivo está nos outros setores: o período não volta neles, então o sinal "

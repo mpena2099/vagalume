@@ -227,9 +227,9 @@ guia.mostrar_guia(st, _treino, aberto=False)
 figura = Path(r["figura"]) if r.get("figura") else None
 if figura and figura.exists():
     if figura.with_name(f"{tic}_p.png").exists():
-        cols = st.columns(3)
+        cols = st.columns(2)
         legendas = {k: f"**{titulo}.** {pergunta}" for k, (titulo, pergunta) in guia.ROTEIRO.items()}
-        for col, nome in zip(cols, ("curva", "p", "mapa")):
+        for col, nome in zip(cols, ("p", "mapa")):
             caminho = figura.with_name(f"{tic}_{nome}.png")
             if caminho.exists():
                 with col.container(key=f"figura_{nome}"):
