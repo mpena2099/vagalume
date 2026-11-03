@@ -198,6 +198,13 @@ def salvar_tentativa(conn: sqlite3.Connection, caso: str, escolha: str, certa: s
     conn.commit()
 
 
+def zerar_treino(conn: sqlite3.Connection) -> None:
+    """Apaga todas as respostas do treino (o nivel volta a Aprendiz)."""
+    conn.execute(_SCHEMA_TREINO)
+    conn.execute("DELETE FROM treino_historico")
+    conn.commit()
+
+
 def ler_tentativas(conn: sqlite3.Connection) -> pd.DataFrame:
     conn.execute(_SCHEMA_TREINO)
     return pd.read_sql("SELECT * FROM treino_historico ORDER BY respondido_em", conn)

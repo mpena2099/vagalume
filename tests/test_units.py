@@ -276,6 +276,14 @@ def test_pista_treino():
     assert "linha fina" in pista({"deslocamento_px": 0.3, "forca": 20}, "confirmado", "VSX")
 
 
+def test_zerar_treino():
+    from app.dados import ler_tentativas, salvar_tentativa, zerar_treino
+    conn = sqlite3.connect(":memory:")
+    salvar_tentativa(conn, "1_ls", "confirmado", "confirmado", 1.0)
+    zerar_treino(conn)
+    assert ler_tentativas(conn).empty
+
+
 def test_resumo_treino():
     from app.dados import ler_tentativas, resumo_treino, salvar_tentativa
     conn = sqlite3.connect(":memory:")

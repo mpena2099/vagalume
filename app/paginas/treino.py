@@ -135,6 +135,20 @@ def mostrar_historico():
             col.metric(rotulo, valor, delta=delta, help=ajuda)
         st.caption("Acerto muito diferente entre as colunas \"Quando era\" indica viés, por "
                    "exemplo confirmar quase tudo. Dúvida vale meio ponto.")
+        if st.session_state.get("confirmar_zerar"):
+            st.warning("Apagar todas as respostas do treino? Não dá para desfazer.")
+            sim, nao = st.columns(2)
+            if sim.button("Sim, zerar", type="primary", key="zerar_sim"):
+                with conectar_historico() as conn:
+                    dados.zerar_treino(conn)
+                st.session_state.confirmar_zerar = False
+                st.rerun()
+            if nao.button("Cancelar", key="zerar_nao"):
+                st.session_state.confirmar_zerar = False
+                st.rerun()
+        elif st.button("Zerar histórico", key="zerar"):
+            st.session_state.confirmar_zerar = True
+            st.rerun()
 
 
 mostrar_historico()
