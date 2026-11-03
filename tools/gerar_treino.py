@@ -143,6 +143,13 @@ def main():
     TREINO_DIR.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(SQLITE_PATH) as con:
         con.execute(_SCHEMA)
+        # candidata fica fora do treino: a demo e publica e o gabarito julgaria a descoberta
+        # antes da revisao
+        tem_fase7 = con.execute("SELECT 1 FROM sqlite_master WHERE name = 'candidatos_fase7'"
+                                ).fetchone()
+        candidatas = ({int(t) for (t,) in con.execute("SELECT tic FROM candidatos_fase7")}
+                      if tem_fase7 else set())
+        con.executemany("DELETE FROM treino WHERE tic = ?", [(t,) for t in candidatas])
         feitos = {(int(tic), metodo) for tic, metodo in con.execute("SELECT tic, metodo FROM treino")}
         for tic, metodo, figura, explicacao in con.execute(
                 "SELECT tic, metodo, figura, explicacao FROM treino "
@@ -167,6 +174,8 @@ def main():
         novos = 0
         for i, (r, resposta, explicacao) in enumerate(casos, 1):
             tic, metodo = int(r["tic"]), r["metodo"]
+            if tic in candidatas:
+                continue
             if (tic, metodo) in feitos:
                 print(f"  {i}/{len(casos)} TIC {tic} {metodo}: já no treino")
                 continue
