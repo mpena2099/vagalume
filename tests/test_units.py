@@ -271,7 +271,6 @@ def test_pista_treino():
     assert "mapa" in pista({"deslocamento_px": 5.0}, "descartado", "o sinal vem da vizinha")
     ruido = pista({"deslocamento_px": 5.0, "forca": 1.5}, "descartado", "mal passa do ruído")
     assert "qualquer pixel" in ruido and "outra estrela" not in ruido
-    assert "nave" in pista({"deslocamento_px": 0.2}, "descartado", "período da própria nave")
     assert "faixa larga" in pista({"forca": 1.5}, "descartado", "mal passa do ruído")
     assert "2P" in pista({"deslocamento_px": 0.3}, "confirmado", "VSX já lista X com período 5 d, razão 0.50 com o período medido")
     assert "linha fina" in pista({"deslocamento_px": 0.3, "forca": 20}, "confirmado", "VSX")

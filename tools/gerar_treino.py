@@ -45,9 +45,11 @@ MOTIVOS = {
                     "o período.",
 }
 
-# amostra da Fase 4 por motivo de rejeicao: periodo de sistematico do TESS, sinal fraco
-# contra o ruido e poucos ciclos no setor
-AMOSTRA_FASE4 = {"sistematico": 12, "amplitude": 6, "ciclos": 6}
+# amostra da Fase 4: so sinal fraco contra o ruido, que se ve na curva em P. Periodo de
+# sistematico e poucos ciclos nunca chegam a fila e nao aparecem nos paineis: no quiz
+# eram gabarito impossivel de acertar pela tela
+AMOSTRA_FASE4 = {"amplitude": 6}
+FORA_DO_TREINO = ("sistematico", "ciclos")
 MOTIVOS_FASE4 = {
     "sistematico": "O período cai sobre um período da própria nave (1 d, 13,7 d ou harmônicos). "
                    "Pode até haver variação real, mas com este dado não dá para separá-la da "
@@ -150,6 +152,8 @@ def main():
         candidatas = ({int(t) for (t,) in con.execute("SELECT tic FROM candidatos_fase7")}
                       if tem_fase7 else set())
         con.executemany("DELETE FROM treino WHERE tic = ?", [(t,) for t in candidatas])
+        con.executemany("DELETE FROM treino WHERE explicacao = ?",
+                        [(MOTIVOS_FASE4[m],) for m in FORA_DO_TREINO])
         feitos = {(int(tic), metodo) for tic, metodo in con.execute("SELECT tic, metodo FROM treino")}
         for tic, metodo, figura, explicacao in con.execute(
                 "SELECT tic, metodo, figura, explicacao FROM treino "

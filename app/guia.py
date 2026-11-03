@@ -114,18 +114,12 @@ def pista(r: dict, resposta: str, explicacao: str) -> str:
     # sem sinal real o pico do mapa cai num pixel qualquer: o mapa so e a pista quando o
     # motivo do descarte e a vizinha (ou quando nao ha outro motivo)
     longe = d is not None and d > DESLOCAMENTO_MAX_PX
-    if "própria nave" in explicacao:
-        return ("Olhe o período: ele cai sobre um período da própria nave (1 d, 13,7 d ou "
-                "metades). A curva pode até ter forma, mas não dá para provar que vem da estrela.")
     if "ruído" in explicacao:
         f = "" if forca is None else f" (amplitude {forca:.1f} vezes o ruído)"
         extra = (" O mapa também não aponta o alvo: sem sinal, o pico cai em qualquer pixel."
                  if longe else "")
         return (f"Olhe a curva dobrada em P: faixa larga sem desenho{f}. Repare também na "
                 f"escala vertical, muito estreita.{extra}")
-    if "ciclos" in explicacao:
-        return ("Olhe o item \"Ciclos no setor\" do checklist: menos de 3 ciclos. Duas ou três "
-                "quedas não provam um período, mesmo que sejam fundas.")
     if "não se repete" in explicacao:
         extra = (f" O mapa ajuda: o x vermelho está a {d:.1f} px do + verde." if longe else "")
         return ("O motivo está nos outros setores: o período não volta neles, então o sinal "
