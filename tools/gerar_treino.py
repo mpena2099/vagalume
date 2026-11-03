@@ -27,7 +27,7 @@ from src.triagem import _triar
 
 CAMPOS = ("tic", "metodo", "periodo_d", "amplitude", "tmag", "n_ciclos", "deslocamento_px",
           "persistente", "setores_extra", "periodos_extra", "suspeito_blend",
-          "amp_necessaria_min", "gaia_candidata", "gaia_classe")
+          "amp_necessaria_min", "gaia_candidata", "gaia_classe", "perto_sistematico")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS treino (

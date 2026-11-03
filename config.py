@@ -52,6 +52,10 @@ AMP_RUIDO_MIN = 3
 # orbita do TESS (13,7 d), harmonicos e ~1 d
 PERIODOS_SISTEMATICOS_D = [13.7, 6.85, 4.57, 1.0]
 SISTEMATICO_TOL_REL = 0.03
+# perto de um periodo da nave so descarta se o campo confirma o sistematico: pelo menos
+# SISTEMATICO_CAMPO_MIN outras estrelas com sinal no mesmo periodo (+-SISTEMATICO_CAMPO_TOL)
+SISTEMATICO_CAMPO_MIN = 3
+SISTEMATICO_CAMPO_TOL = 0.02
 
 # Fase 5: cross-match com catalogos de variaveis conhecidas
 RAIO_MATCH_ARCSEC = 30

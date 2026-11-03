@@ -13,7 +13,8 @@ import numpy as np
 import pandas as pd
 
 from config import (AMP_RUIDO_MIN, BLS_FLATTEN_D, BLS_SNR_MIN, LS_FLATTEN_D, LS_FAP_MAX, N_CICLOS_MIN,
-                    PERIODOS_SISTEMATICOS_D, ROOT, SINAIS_WORKERS, SISTEMATICO_TOL_REL,
+                    PERIODOS_SISTEMATICOS_D, ROOT, SINAIS_WORKERS, SISTEMATICO_CAMPO_MIN,
+                    SISTEMATICO_CAMPO_TOL, SISTEMATICO_TOL_REL,
                     SQLITE_PATH)
 from src.curvas import baixar_curva
 from src.periodo import medir_periodo_bls, medir_periodo_ls
@@ -42,12 +43,31 @@ def avaliar_sinal(metodo: str, periodo_d: float, amplitude: float, estatistica: 
         return "snr"
     if duracao_d / periodo_d < N_CICLOS_MIN:
         return "ciclos"
+    if amplitude < AMP_RUIDO_MIN * ruido_ptp:
+        return "amplitude"
+    # por ultimo: "sistematico" quer dizer que passou em todo o resto (resgatar_sistematicos)
     for p in PERIODOS_SISTEMATICOS_D:
         if abs(periodo_d / p - 1) < SISTEMATICO_TOL_REL:
             return "sistematico"
-    if amplitude < AMP_RUIDO_MIN * ruido_ptp:
-        return "amplitude"
     return None
+
+
+def resgatar_sistematicos(df: pd.DataFrame) -> pd.DataFrame:
+    """Sinal perto de um periodo da nave volta a valer se o campo nao repete o periodo.
+
+    Luz espalhada e efeitos da nave atingem muitas estrelas do campo no mesmo periodo; uma
+    estrela sozinha com sinal forte ali e da estrela. Conta, por metodo, as outras estrelas
+    com sinal (aprovado ou "sistematico") a ate SISTEMATICO_CAMPO_TOL do periodo.
+    """
+    df = df.copy()
+    df["perto_sistematico"] = df["motivo"] == "sistematico"
+    fortes = df[df["motivo"].isna() | (df["motivo"] == "sistematico")]
+    for i, s in df[df["perto_sistematico"]].iterrows():
+        outras = fortes[(fortes["metodo"] == s["metodo"]) & (fortes["tic"] != s["tic"])]
+        iguais = (outras["periodo_d"] / s["periodo_d"] - 1).abs() < SISTEMATICO_CAMPO_TOL
+        if int(iguais.sum()) < SISTEMATICO_CAMPO_MIN:
+            df.loc[i, ["motivo", "sinal"]] = [None, True]
+    return df
 
 
 def _uma(tic: int, setor: int, autor: str, duracao_d: float, ruido_ptp: float) -> list[dict]:
@@ -116,6 +136,9 @@ def run():
                 print(f"  {i}/{len(futuros)}")
 
     df = pd.DataFrame(linhas).sort_values(["tic", "metodo"]).reset_index(drop=True)
+    df = resgatar_sistematicos(df)
+    print(f"  Perto de periodo da nave e unicos no campo (resgatados): "
+          f"{int((df['perto_sistematico'] & df['sinal']).sum())}")
     print(f"  Motivos de rejeicao: {df['motivo'].value_counts().to_dict()}")
     for metodo in ("ls", "bls"):
         print(f"  Sinais {metodo.upper()}: {int(df[(df['metodo'] == metodo) & df['sinal']].shape[0])}")

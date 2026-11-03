@@ -112,6 +112,13 @@ def checklist(r: dict) -> list[dict]:
                       "explicacao": f"A amplitude é {f:.1f} vezes o ruído: o sinal está bem "
                                     "acima do ruído."})
 
+    if _sim(r.get("perto_sistematico")):
+        itens.append({"estado": "atencao", "titulo": "Período perto de um ritmo do satélite",
+                      "explicacao": f"O período de {r.get('periodo_d', 0):.3f} d fica perto de um "
+                                    "ritmo do TESS (1 d, 4,57 d, 6,85 d ou 13,7 d), mas nenhuma "
+                                    "outra estrela forte do campo tem esse período. Confira no "
+                                    "mapa se o sinal sai da estrela alvo."})
+
     if _sim(r.get("suspeito_blend")):
         amp = r.get("amp_necessaria_min")
         amp_txt = ("amplitude desconhecida" if amp is None or pd.isna(amp)

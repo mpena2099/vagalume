@@ -85,7 +85,7 @@ Cortes para virar sinal:
 
 - `LS_FAP_MAX = 1e-4` ou `BLS_SNR_MIN = 10`.
 - Pelo menos 3 ciclos completos no setor (`periodo_d < ~9 d` num setor de ~27 d).
-- Descartar períodos próximos de sistemáticos conhecidos do TESS: ~13,7 d (órbita do satélite), seus harmônicos, e ~1 d.
+- Períodos próximos de sistemáticos conhecidos do TESS (~13,7 d, a órbita do satélite, seus harmônicos e ~1 d) só são descartados quando o campo confirma o sistemático: pelo menos 3 outras estrelas com sinal no mesmo período (±2%). Sinal forte e único no campo segue adiante com o alerta `perto_sistematico` no checklist. No setor 55, das 533 estrelas, 32 têm o pico do LS perto de 1 d, mas só uma com sinal forte, que se repete em outros setores e não aparece nas vizinhas.
 - Amplitude acima de 3x o ruído ponto a ponto.
 
 ## 8. Fase 5: cruzar com conhecidos

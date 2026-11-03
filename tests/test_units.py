@@ -12,7 +12,7 @@ from app import dados
 from src.baixar_curvas import resumir_curva
 from src.checar_contaminacao import amp_necessaria, veredito
 from src.cruzar_conhecidos import classificar
-from src.detectar_sinal import avaliar_sinal
+from src.detectar_sinal import avaliar_sinal, resgatar_sistematicos
 from src.triagem import amplitude_dobrada, profundidade_eclipse
 from src.periodo import comparar_periodo, medir_periodo_bls, medir_periodo_ls
 from src.selecionar_alvos import filtrar_alvos
@@ -146,6 +146,21 @@ def test_avaliar_sinal():
     assert avaliar_sinal("bls", 11.2, 0.01, 20, 27, 0.002) == "ciclos"
     assert avaliar_sinal("ls", 1.01, 0.01, 1e-10, 27, 0.002) == "sistematico"
     assert avaliar_sinal("bls", 2.3, 0.004, 20, 27, 0.002) == "amplitude"
+    # fraco e perto de 1 d: o motivo e o ruido, nao a nave
+    assert avaliar_sinal("ls", 1.01, 0.004, 1e-10, 27, 0.002) == "amplitude"
+
+
+def test_resgatar_sistematicos():
+    def linha(tic, p, motivo):
+        return {"tic": tic, "metodo": "ls", "periodo_d": p, "motivo": motivo,
+                "sinal": motivo is None}
+    sozinha = pd.DataFrame([linha(1, 0.98, "sistematico"), linha(2, 2.5, None),
+                            linha(3, 0.98, "amplitude")])
+    r = resgatar_sistematicos(sozinha)
+    assert r.loc[0, "sinal"] and r.loc[0, "motivo"] is None and r.loc[0, "perto_sistematico"]
+    campo = pd.DataFrame([linha(t, 1.0 + t / 1000, "sistematico") for t in range(1, 6)])
+    r = resgatar_sistematicos(campo)
+    assert not r["sinal"].any() and (r["motivo"] == "sistematico").all()
 
 
 
