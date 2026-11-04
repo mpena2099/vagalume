@@ -39,3 +39,21 @@ def retry(fn, servico: str, retries: int = 4, delay: float = 5.0):
             else:
                 raise
     return None
+
+
+def usar_espelho_simbad(prazo_s: float = 8.0):
+    """Se o SIMBAD de Estrasburgo nao responde, usa o espelho de Harvard.
+
+    So o SIMBAD: o VizieR de Harvard nao tem o Gaia DR3 e devolve 0 linhas sem erro,
+    o que apagaria os blends da Fase 6.
+    """
+    import socket
+    from astroquery.simbad import conf
+    try:
+        socket.create_connection((conf.server, 443), timeout=prazo_s).close()
+    except OSError:
+        conf.server = "simbad.harvard.edu"
+        print("  SIMBAD do CDS fora do ar: usando o espelho de Harvard.")
+
+
+usar_espelho_simbad()
