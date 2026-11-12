@@ -57,3 +57,46 @@ def usar_espelho_simbad(prazo_s: float = 8.0):
 
 
 usar_espelho_simbad()
+
+
+def _cds_responde(url: str, prazo_s: float = 15.0) -> bool:
+    import requests
+    try:
+        return requests.get(url, timeout=prazo_s).status_code == 200
+    except requests.RequestException:
+        return False
+
+
+def usar_espelhos_cds():
+    """Se o CDS de Estrasburgo nao entrega consultas, aponta SIMBAD e VizieR para espelhos.
+
+    O VizieR de Harvard nao tem o Gaia DR3 e devolve 0 linhas sem erro, o que apagaria os
+    blends da Fase 6. So o espelho do IDIA (Africa do Sul) e usado, e antes confere que ele
+    devolve fontes do Gaia DR3 numa regiao conhecida; se nao devolver, nada muda.
+    """
+    from astroquery.simbad import conf as simbad_conf
+    from astroquery.vizier import VizierClass, conf as vizier_conf
+
+    if not _cds_responde(f"https://{simbad_conf.server}/simbad/sim-id?Ident=Vega&output.format=ASCII"):
+        simbad_conf.server = "simbad.harvard.edu"
+        print("  SIMBAD do CDS fora do ar: usando o espelho de Harvard.")
+
+    if _cds_responde(f"https://{vizier_conf.server}/viz-bin/votable?-source=I/239/hip_main&-out.max=1"):
+        return
+    espelho = "vizier.idia.ac.za"
+    try:
+        from astropy import units as u
+        from astropy.coordinates import SkyCoord
+        r = VizierClass(columns=["Source"], row_limit=1, timeout=60, vizier_server=espelho).query_region(
+            SkyCoord(300 * u.deg, 35 * u.deg), radius=3 * u.arcmin, catalog="I/355/gaiadr3")
+        if not len(r) or not len(r[0]):
+            raise ValueError("espelho sem Gaia DR3")
+    except Exception as e:
+        print(f"  VizieR do CDS fora do ar e o espelho {espelho} nao serve ({type(e).__name__}).")
+        return
+    # o astroquery le conf.server uma vez, no default do __init__
+    VizierClass.__init__.__kwdefaults__["vizier_server"] = espelho
+    print(f"  VizieR do CDS fora do ar: usando o espelho {espelho}.")
+
+
+usar_espelhos_cds()
