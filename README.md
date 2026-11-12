@@ -52,7 +52,7 @@ O envio ao VSX é manual (não há API): copie os campos da ficha para o formul�
 
 ## Estado
 
-As oito fases estão implementadas (a 8, ficha do VSX, roda à mão depois da revisão). A Fase 1 redescobre WASP-18 b, uma binária eclipsante destacada e uma de contato, com o período dentro de 0,1% da referência. A primeira varredura, no setor 55 (Cygnus, plano da Via Láctea), processou 500 estrelas: 39 com sinal periódico, 13 sem variável catalogada a menos de 30" e 9 candidatas depois da checagem de vizinhas e da repetição em outros setores. Elas aguardam a revisão visual. Detalhes técnicos, cortes, catálogos e riscos em [`especificacao.md`](especificacao.md).
+As oito fases estão implementadas (a 8, ficha do VSX, roda à mão depois da revisão). A Fase 1 redescobre WASP-18 b, uma binária eclipsante destacada e uma de contato, com o período dentro de 0,1% da referência. A primeira varredura, no setor 55 (Cygnus, plano da Via Láctea), processou 566 estrelas: 51 com sinal periódico, 19 sem variável catalogada a menos de 30" e 14 candidatas depois da checagem de vizinhas e da repetição em outros setores. Elas aguardam a revisão visual. Detalhes técnicos, cortes, catálogos e riscos em [`especificacao.md`](especificacao.md).
 
 ## Achados
 
@@ -61,7 +61,7 @@ O que o projeto encontrou até agora, inclusive o que não deu certo:
 | Achado | Estágio | O que ensinou |
 |---|---|---|
 | Teste de sanidade: WASP-18 b, uma binária eclipsante destacada e uma de contato são redescobertas com o período a menos de 0,1% da referência | Feito a cada execução | A detecção de período funciona nos três tipos de sinal |
-| Setor 55 (Cygnus): 500 estrelas, 39 com sinal periódico, 13 sem variável catalogada a menos de 30", 9 candidatas | Em revisão visual | A checagem de estrelas vizinhas e a repetição em outros setores cortam a maior parte |
+| Setor 55 (Cygnus): 566 estrelas, 51 com sinal periódico, 19 sem variável catalogada a menos de 30", 14 candidatas | Em revisão visual | A checagem de estrelas vizinhas e a repetição em outros setores cortam a maior parte |
 | Uma candidata, a TIC 64711184, já estava publicada como pulsante SPB (catálogo J/ApJS/268/16), fora das listas que o pipeline cruzava | Saiu da fila: o catálogo entrou no cruzamento | Daí veio a busca no VizieR inteiro antes da ficha do VSX, e os catálogos achados assim passaram a ser cruzados |
 
 ## Uso
