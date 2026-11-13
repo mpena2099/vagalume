@@ -1,8 +1,8 @@
 """Figura didatica do guia: a mesma curva dobrada em P e em 2P, com ciclos alternados em cores.
 
-Curvas simuladas (so ilustracao, nao e caso do treino): uma binaria eclipsante em que o
-programa acha metade do periodo e uma pulsante em que P ja e o certo. Pintar os ciclos
-de P alternando laranja e azul mostra de onde vem cada vale.
+Curvas simuladas (so ilustracao, nao e caso do treino): binaria destacada, binaria de
+contato e binaria com secundario raso demais (periodo certo 2P) e uma pulsante (periodo
+certo P). Pintar os ciclos de P alternando laranja e azul mostra de onde vem cada vale.
 
     python tools/gerar_figura_periodo.py    # grava docs/img/p_vs_2p.png
 """
@@ -33,6 +33,17 @@ def _binaria(t):
     return 1 - fundo - raso
 
 
+def _contato(t):
+    """Binaria de contato: dois minimos iguais por orbita (2P), amplitude de ~20%."""
+    return 0.90 + 0.10 * np.cos(2 * np.pi * t / P) - 0.008 * np.cos(4 * np.pi * t / P)
+
+
+def _secundario_raso(t):
+    """So o eclipse fundo (25%) a cada 2P; o secundario some no ruido."""
+    fase = (t / (2 * P)) % 1
+    return 1 - 0.25 * np.exp(-0.5 * (np.minimum(fase, 1 - fase) / 0.025) ** 2)
+
+
 def _pulsante(t):
     return 1 - 0.08 * np.cos(2 * np.pi * t / P)
 
@@ -54,17 +65,20 @@ def main():
     rng = np.random.default_rng(1)
     t = np.sort(rng.uniform(0, 26, 5000))
     ruido = rng.normal(0, 0.006, t.size)
-    fig, eixos = plt.subplots(2, 2, figsize=(10, 6.4), sharey="row")
-    for linha, (nome, f, certo) in enumerate((("Binária", _binaria, "2P"),
-                                              ("Pulsante", _pulsante, "P"))):
+    casos = (("Binária destacada", _binaria, "os dois vales caem no mesmo lugar",
+              "um vale fundo e um raso: período 2P"),
+             ("Binária de contato", _contato, "uma onda limpa, laranja e azul iguais",
+              "dois vales iguais, Amplitude ~20%: período 2P"),
+             ("Segundo eclipse raso demais", _secundario_raso,
+              "pontos atravessam o vale até 1,00",
+              "um vale só e o resto plano: período 2P"),
+             ("Pulsante", _pulsante, "uma onda limpa, laranja e azul iguais",
+              "a mesma onda duas vezes: período P"))
+    fig, eixos = plt.subplots(len(casos), 2, figsize=(10, 12.5), sharey="row")
+    for linha, (nome, f, titulo_p, titulo_2p) in enumerate(casos):
         fluxo = f(t) + ruido
-        _painel(eixos[linha, 0], t, fluxo, P,
-                f"{nome}: dobrada em P\n" + ("os dois vales caem no mesmo lugar" if certo == "2P"
-                                              else "laranja e azul fazem o mesmo desenho"))
-        _painel(eixos[linha, 1], t, fluxo, 2 * P,
-                f"{nome}: dobrada em 2P\n" + ("vale fundo e vale raso separados: período 2P"
-                                               if certo == "2P"
-                                               else "a mesma onda duas vezes: período P"))
+        _painel(eixos[linha, 0], t, fluxo, P, f"{nome}: dobrada em P\n{titulo_p}")
+        _painel(eixos[linha, 1], t, fluxo, 2 * P, f"{nome}: dobrada em 2P\n{titulo_2p}")
         eixos[linha, 0].set_ylabel("brilho relativo")
     eixos[0, 0].legend(loc="lower left", fontsize=8, markerscale=3)
     fig.tight_layout()

@@ -37,20 +37,19 @@ ROTEIRO = {
 PERIODO = ("Depois de confirmar: o período (P ou 2P)",
            "Dobrar em P é cortar a curva em pedaços de P dias e empilhar os pedaços. Dobrar em "
            "2P é cortar em pedaços duas vezes maiores: cada pedaço leva dois ciclos de P lado a "
-           "lado.\n\n"
-           "Por que olhar: numa binária a estrela escurece duas vezes por volta, num eclipse "
-           "fundo e num raso. O programa costuma ver \"um escurecimento a cada meia volta\" e "
-           "acha metade do período verdadeiro. Na figura abaixo (curvas simuladas), os ciclos de "
-           "P se alternam em laranja e azul:\n"
-           "- **Binária.** Em P, o eclipse fundo (laranja) e o raso (azul) caem no mesmo lugar, "
-           "um por cima do outro. Em 2P cada um vai para o seu lugar: dois vales diferentes. "
-           "O período certo é 2P.\n"
-           "- **Pulsante.** Laranja e azul fazem o mesmo desenho. Em 2P aparece só a mesma onda "
-           "duas vezes, nada novo. O período certo é P.\n\n"
-           "Dois casos especiais. Se em 2P sobra um vale só e o resto plano (e, em P, pontos "
-           "atravessam o vale em 1,00), o segundo eclipse é raso demais para aparecer: binária, "
-           "período 2P. Se em 2P aparecem dois vales iguais com variação acima de ~10% e 2P "
-           "acima de ~0,22 d, pode ser binária de contato, também 2P.\n\n"
+           "lado. O programa costuma achar metade do período de uma binária. Na figura abaixo "
+           "(curvas simuladas), os ciclos de P se alternam em laranja e azul.\n\n"
+           "Compare os painéis P e 2P e escolha pelo caso que combina. Se vir dois vales "
+           "iguais, olhe a Amplitude na ficha:\n"
+           "- **Binária destacada.** Em 2P, dois vales diferentes (um fundo e um raso). "
+           "Resposta: 2P.\n"
+           "- **Binária com o segundo eclipse raso demais.** Em 2P, um vale só e o resto plano "
+           "em 1,00. Em P, o vale tem pontos espalhados que atravessam até 1,00 (metade dos "
+           "ciclos não tem eclipse). Resposta: 2P.\n"
+           "- **Binária de contato.** Em P, uma onda limpa. Em 2P, dois vales iguais, com "
+           "Amplitude acima de ~10% e 2P acima de ~0,22 d. Resposta: 2P.\n"
+           "- **Pulsante.** Em P, uma onda limpa. Em 2P, a mesma onda duas vezes, com "
+           "Amplitude abaixo de ~10% ou 2P abaixo de ~0,22 d. Resposta: P.\n\n"
            "A curva em 2P não decide se a variação é real: serve só para anotar o período na "
            "ficha do VSX (a Fase 8 sugere sozinha, aqui você confere).")
 FIGURA_PERIODO = IMG_DIR / "p_vs_2p.png"  # tools/gerar_figura_periodo.py
@@ -171,13 +170,13 @@ def explicar_periodo(certo: str, r: dict) -> str:
         num = "" if per is None else f" Aqui 2P = {2 * per:.3f} d."
         return ("O catálogo dá o dobro do período medido: o real é 2P. No painel 2P aparecem "
                 "dois vales (diferentes numa binária destacada; iguais numa binária de contato, "
-                "que varia mais de ~10% e tem 2P acima de ~0,22 d) ou um vale só e o resto "
+                "com Amplitude acima de ~10% e 2P acima de ~0,22 d) ou um vale só e o resto "
                 f"plano, quando o segundo eclipse é raso demais.{num}")
     num = ("" if per is None or amp is None
-           else f" Aqui a variação é de {amp * 100:.1f}% e 2P = {2 * per:.3f} d.")
+           else f" Aqui a Amplitude é de {amp * 100:.1f}% e 2P = {2 * per:.3f} d.")
     return ("O catálogo dá o mesmo período medido: o real é P. Em 2P a mesma forma aparece "
             "duas vezes, sem nada novo. Se forem dois vales iguais, não é binária de contato "
-            "quando a variação é pequena (abaixo de ~10%) ou 2P fica abaixo de ~0,22 d: aí é "
+            "quando a Amplitude é pequena (abaixo de ~10%) ou 2P fica abaixo de ~0,22 d: aí é "
             f"pulsante.{num}")
 
 
