@@ -68,6 +68,65 @@ def test_ficha_vsx():
     assert not eh_catalogo_variavel("Variability Upper Limits for Non-Variable Sources")
 
 
+def test_ficha_vsx_retoma():
+    from src.ficha_vsx import plano as _plano
+    antigo = "Busca no VizieR inteiro não feita (servidor sem resposta): confira à mão em vizier.cds.unistra.fr ou num espelho antes de submeter."
+    assert _plano({"avisos": antigo}) == "completar:vizier"
+    assert _plano({"avisos": "outro aviso qualquer"}) == "nova"
+    import tempfile
+    import types
+    from pathlib import Path
+    from unittest import mock
+    import pandas as pd
+    from src import ficha_vsx as fv
+    assert fv.plano(None) == "nova"
+    assert fv.plano({"avisos": ""}) == "manter"
+    assert fv.plano({"avisos": ""}, refazer=True) == "nova"
+    assert fv.plano({"avisos": fv.AVISO_VIZIER}) == "completar:vizier"
+    assert fv.plano({"avisos": fv.AVISO_GAIA + " | " + fv.AVISO_VIZIER}) == "completar:gaia,vizier"
+    assert fv.plano({"avisos": "aviso desconhecido"}) == "nova"
+
+    # o CSV volta igual, inclusive o ID Gaia de 19 digitos e as colunas vazias
+    tmp_path = Path(tempfile.mkdtemp())
+    mock.patch.object(fv, "VSX_DIR", tmp_path).start()
+    ficha = {"tic": 7, "decisao": "confirmado", "periodo_d": 1.23456, "periodo_erro_d": float("nan"),
+             "alerta_periodo": "", "fase_secundario": 0.5, "tipo_sugerido": "EA",
+             "motivo_tipo": "m", "epoca_bjd": 2460000.1, "amplitude_mag_tess": 0.3,
+             "setores": "55", "setores_usados": "55", "suspeito_blend": False,
+             "figura_fase": "f.png", "figura_triagem": "t.png",
+             "vizier_variaveis": "busca não feita", "avisos": fv.AVISO_VIZIER}
+    outra = dict(ficha, tic=8, gaia_dr3=4_000_000_000_000_000_001, gaia_ra=1.0, gaia_dec=2.0,
+                 gaia_g=12.0, v_estimada=12.5, gaia_sep_arcsec=0.4, avisos="")
+    fv._gravar([ficha, outra])
+    lidas = fv.ler_fichas(tmp_path / "fichas.csv")
+    assert lidas[8]["gaia_dr3"] == 4_000_000_000_000_000_001
+    assert "gaia_dr3" not in lidas[7] and "periodo_erro_d" not in lidas[7]
+    assert lidas[7]["suspeito_blend"] is False and lidas[7]["setores"] == "55"
+    assert fv.plano(lidas[7]) == "completar:vizier" and fv.plano(lidas[8]) == "manter"
+
+    # completar so o VizieR preserva periodo, tipo, epoca e a fonte Gaia
+    s = types.SimpleNamespace(ra=1.0, dec=2.0)
+    def proibido(*a, **k):
+        raise AssertionError("busca fora do plano")
+    mock.patch.object(fv, "_vizier", lambda alvo: ['J/X/1 (Eclipsing binaries) a 2.0"']).start()
+    mock.patch.object(fv, "_gaia", proibido).start()
+    mock.patch.object(fv, "_medir", proibido).start()
+    f = fv.completar_buscas(dict(lidas[7]), s, ["vizier"])
+    assert f["avisos"] == "" and f["vizier_variaveis"].startswith("J/X/1")
+    assert f["periodo_d"] == 1.23456 and f["tipo_sugerido"] == "EA" and f["epoca_bjd"] == 2460000.1
+    assert "Aviso" not in fv._markdown(f)
+    # servidor ainda fora: o aviso continua
+    mock.patch.object(fv, "_vizier", proibido).start()  # AssertionError conta como falha da busca
+    f = fv.completar_buscas(dict(lidas[7]), s, ["vizier"])
+    assert f["avisos"] == fv.AVISO_VIZIER and f["periodo_d"] == 1.23456
+    # so o Gaia: o aviso do VizieR fica
+    mock.patch.object(fv, "_gaia", lambda alvo: {"gaia_dr3": 5, "v_estimada": 11.0}).start()
+    dupla = dict(lidas[7], avisos=fv.AVISO_GAIA + " | " + fv.AVISO_VIZIER)
+    f = fv.completar_buscas(dupla, s, ["gaia"])
+    assert f["avisos"] == fv.AVISO_VIZIER and f["gaia_dr3"] == 5
+    mock.patch.stopall()
+
+
 def test_periodo_setores():
     from src.periodo_setores import medir_periodo_setores
     rng = np.random.default_rng(3)

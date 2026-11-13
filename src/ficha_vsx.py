@@ -9,6 +9,9 @@ a mao para o New Star Wizard. Tipo e periodo sao sugestoes, conferir na figura.
     python src/ficha_vsx.py              # confirmadas
     python src/ficha_vsx.py --duvidas    # confirmadas e duvidas
     python src/ficha_vsx.py --todas      # todas as candidatas da Fase 7 (antes da revisao)
+    python src/ficha_vsx.py --refazer    # ignora fichas.csv e refaz tudo (combina com os outros)
+
+Rodar de novo retoma: ficha pronta e mantida e ficha incompleta refaz so a busca que faltou.
 """
 
 import argparse
@@ -45,8 +48,11 @@ BTJD_PARA_BJD = 2457000.0
 # Gaia e VizieR inteiro nao podem segurar a rodada: poucas tentativas e prazo curto
 CONSULTA_TENTATIVAS = 2
 CONSULTA_TIMEOUT_S = 90
-AVISO_VIZIER = ("Busca no VizieR inteiro não feita (servidor sem resposta): confira à mão em "
-                "vizier.cds.unistra.fr ou num espelho antes de submeter.")
+AVISO_VIZIER = ("Busca em todos os catálogos do VizieR não feita (servidor sem resposta). Ela "
+                "acha artigos que já publicaram a estrela e que a Fase 5 não cobre. Não submeta "
+                "antes de rodar a Fase 8 de novo com o VizieR respondendo ou de conferir à mão: "
+                "busque as coordenadas desta ficha com raio de 30\" em vizier.cds.unistra.fr ou "
+                "em vizier.idia.ac.za.")
 AVISO_GAIA = ("Fonte Gaia DR3 não obtida (servidor sem resposta): posição, V estimada e nome "
               "Gaia ficam em branco; confira à mão no Gaia ou no VizieR antes de submeter.")
 # Descricao de catalogo VizieR que indica variabilidade: onde a estrela pode ter entrado
@@ -212,9 +218,8 @@ def _juntar(curvas) -> tuple[np.ndarray, np.ndarray]:
     return tempo[ordem], fluxo[ordem]
 
 
-def montar_ficha(s) -> dict:
-    alvo = SkyCoord(s.ra, s.dec, unit="deg")
-    avisos = []
+def _medir(s) -> dict:
+    """Parte local da ficha: curvas, periodo, tipo, epoca, amplitude e figura (sem rede de catalogos)."""
     brutas = _carregar_setores(s)
     print("  medindo o período", flush=True)
     janela = BLS_FLATTEN_D if s.metodo == "bls" else LS_FLATTEN_D
@@ -244,31 +249,117 @@ def montar_ficha(s) -> dict:
     print("  gerando a curva em fase", flush=True)
     figura = VSX_DIR / f"{s.tic}_fase.png"
     _figura(int(s.tic), tempo, fluxo, periodo, epoca, figura)
-    ficha = {"tic": int(s.tic), "decisao": s.decisao, "periodo_d": periodo,
-             "periodo_erro_d": medido["periodo_erro_d"],
-             "alerta_periodo": medido["alerta_periodo"],
-             "fase_secundario": medido["fase_secundario"],
-             "tipo_sugerido": tipo, "motivo_tipo": motivo, "epoca_bjd": epoca + BTJD_PARA_BJD,
-             "amplitude_mag_tess": amplitude_dobrada_mag(tempo, fluxo, periodo),
-             "setores": ",".join(str(x) for x in [s.setor, s.setores_extra] if pd.notna(x)),
-             "setores_usados": ",".join(str(setor) for setor, _ in brutas),
-             "suspeito_blend": bool(s.suspeito_blend), "figura_fase": str(figura),
-             "figura_triagem": s.figura}
+    return {"tic": int(s.tic), "decisao": s.decisao, "periodo_d": periodo,
+            "periodo_erro_d": medido["periodo_erro_d"],
+            "alerta_periodo": medido["alerta_periodo"],
+            "fase_secundario": medido["fase_secundario"],
+            "tipo_sugerido": tipo, "motivo_tipo": motivo, "epoca_bjd": epoca + BTJD_PARA_BJD,
+            "amplitude_mag_tess": amplitude_dobrada_mag(tempo, fluxo, periodo),
+            "setores": ",".join(str(x) for x in [s.setor, s.setores_extra] if pd.notna(x)),
+            "setores_usados": ",".join(str(setor) for setor, _ in brutas),
+            "suspeito_blend": bool(s.suspeito_blend), "figura_fase": str(figura),
+            "figura_triagem": s.figura}
+
+
+def _buscar_gaia(ficha: dict, s) -> str | None:
+    """Preenche a fonte Gaia DR3 e o que deriva dela (posicao, G, V estimada). Devolve o aviso
+    se o servidor nao respondeu."""
     print("  buscando a fonte no Gaia DR3", flush=True)
     try:
-        ficha.update(_gaia(alvo))
+        ficha.update(_gaia(SkyCoord(s.ra, s.dec, unit="deg")))
     except Exception as e:
         print(f"  Gaia sem resposta ({type(e).__name__}); seguindo sem a fonte", flush=True)
-        avisos.append(AVISO_GAIA)
+        return AVISO_GAIA
+    return None
+
+
+def _buscar_vizier(ficha: dict, s) -> str | None:
+    """Preenche a busca em todos os catalogos do VizieR. Devolve o aviso se nao respondeu."""
     print("  buscando em todos os catálogos do VizieR (pode levar minutos)", flush=True)
     try:
-        ficha["vizier_variaveis"] = "; ".join(_vizier(alvo)) or "nenhum catalogo de variaveis a 30\""
+        ficha["vizier_variaveis"] = ("; ".join(_vizier(SkyCoord(s.ra, s.dec, unit="deg")))
+                                     or "nenhum catalogo de variaveis a 30\"")
     except Exception as e:
         print(f"  VizieR sem resposta ({type(e).__name__}); seguindo sem essa busca", flush=True)
         ficha["vizier_variaveis"] = "busca não feita"
-        avisos.append(AVISO_VIZIER)
-    ficha["avisos"] = " | ".join(avisos)
+        return AVISO_VIZIER
+    return None
+
+
+BUSCAS = {"gaia": _buscar_gaia, "vizier": _buscar_vizier}
+AVISO_DE = {"gaia": AVISO_GAIA, "vizier": AVISO_VIZIER}
+
+
+def completar_buscas(ficha: dict, s, faltas: list[str]) -> dict:
+    """Refaz so as buscas em `faltas` e atualiza `avisos`; o resto da ficha fica como esta."""
+    restantes = [a for a in str(ficha.get("avisos") or "").split(" | ")
+                 if a and a not in [AVISO_DE[k] for k in faltas]]
+    for k in faltas:
+        aviso = BUSCAS[k](ficha, s)
+        if aviso:
+            restantes.append(aviso)
+    ficha["avisos"] = " | ".join(restantes)
     return ficha
+
+
+def montar_ficha(s) -> dict:
+    ficha = _medir(s)
+    ficha["avisos"] = ""
+    return completar_buscas(ficha, s, ["gaia", "vizier"])
+
+
+def plano(anterior: dict | None, refazer: bool = False) -> str:
+    """O que fazer com uma estrela: 'nova', 'manter' ou 'completar:<buscas faltantes>'."""
+    if anterior is None or refazer:
+        return "nova"
+    avisos = str(anterior.get("avisos") or "")
+    if not avisos:
+        return "manter"
+    faltas = set()
+    for aviso in filter(None, (x.strip() for x in avisos.split("|"))):
+        # pelo tipo, nao pelo texto exato: fichas antigas tem outra redacao do aviso
+        if aviso.startswith("Fonte Gaia DR3"):
+            faltas.add("gaia")
+        elif aviso.startswith("Busca") and "VizieR" in aviso:
+            faltas.add("vizier")
+        else:
+            return "nova"  # aviso que esta logica nao sabe completar
+    if not faltas:
+        return "nova"
+    return "completar:" + ",".join(k for k in ("gaia", "vizier") if k in faltas)
+
+
+NUMERICAS = ["periodo_d", "periodo_erro_d", "fase_secundario", "epoca_bjd", "amplitude_mag_tess",
+             "gaia_ra", "gaia_dec", "gaia_g", "v_estimada", "gaia_sep_arcsec"]
+
+
+def ler_fichas(caminho: Path) -> dict[int, dict]:
+    """Fichas de rodadas anteriores por tic. Tudo lido como texto (o ID Gaia de 19 digitos nao
+    cabe em float) e convertido aqui; coluna vazia vira chave ausente."""
+    if not caminho.exists():
+        return {}
+    try:
+        df = pd.read_csv(caminho, dtype=str, keep_default_na=False)
+    except Exception:
+        return {}
+    fichas = {}
+    for linha in df.to_dict("records"):
+        f = {k: v for k, v in linha.items() if v != ""}
+        try:
+            f["tic"] = int(f["tic"])
+            for k in NUMERICAS:
+                if k in f:
+                    f[k] = float(f[k])
+            if "gaia_dr3" in f:
+                f["gaia_dr3"] = int(float(f["gaia_dr3"])) if "e" in f["gaia_dr3"].lower() \
+                    else int(f["gaia_dr3"])
+            f["suspeito_blend"] = f.get("suspeito_blend", "False") == "True"
+            f.setdefault("avisos", "")
+            f.setdefault("vizier_variaveis", "")
+        except (KeyError, ValueError):
+            continue
+        fichas[f["tic"]] = f
+    return fichas
 
 
 def _markdown(f: dict) -> str:
@@ -307,7 +398,10 @@ def _markdown(f: dict) -> str:
 
 
 def _gravar(fichas: list[dict]) -> Path:
-    pd.DataFrame(fichas).to_csv(VSX_DIR / "fichas.csv", index=False)
+    df = pd.DataFrame(fichas)
+    if "gaia_dr3" in df:  # com linhas sem o ID o pandas faria float e perderia os ultimos digitos
+        df["gaia_dr3"] = pd.array([f.get("gaia_dr3") for f in fichas], dtype="Int64")
+    df.to_csv(VSX_DIR / "fichas.csv", index=False)
     saida = VSX_DIR / "fichas.md"
     saida.write_text("# Fichas para o VSX\n\nChecklist completo na secao 11 de `especificacao.md`. "
                      "Tipo e periodo sao sugestoes: conferir na curva em fase antes de enviar.\n\n"
@@ -327,7 +421,7 @@ def _caminho(p: Path) -> str:
         return str(p)
 
 
-def run(decisoes=("confirmado",)) -> Path | None:
+def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
     with sqlite3.connect(SQLITE_PATH) as con:
         cand = carregar_candidatos(con)
     sel = cand if decisoes is None else cand[cand["decisao"].isin(decisoes)]
@@ -341,42 +435,94 @@ def run(decisoes=("confirmado",)) -> Path | None:
                         for d in decisoes))
     print(f"Fase 8: fichas do VSX de {n} estrela{'s' if n != 1 else ''} ({quais}). "
           "Leva alguns minutos por estrela.", flush=True)
+    anteriores = {} if refazer else ler_fichas(VSX_DIR / "fichas.csv")
+    if refazer:
+        print("--refazer: fichas anteriores ignoradas.", flush=True)
+    elif anteriores:
+        print(f"{len(anteriores)} ficha(s) de rodadas anteriores em fichas.csv: ficha pronta é "
+              "mantida, ficha incompleta só refaz a busca que faltou.", flush=True)
     print("Ctrl+C a qualquer momento: as fichas já prontas ficam salvas.", flush=True)
-    fichas, falhas, saida = [], [], None
+    tics = [int(t) for t in sel["tic"]]
+    # fichas.csv/.md refletem a selecao atual; estrela ainda nao tratada nesta rodada
+    # continua com a ficha anterior, para uma interrupcao nao apagar trabalho feito
+    atuais: dict[int, dict] = {t: anteriores[t] for t in tics if t in anteriores}
+    contagem = {"mantida": 0, "completada": 0, "nova": 0}
+    falhas, saida = [], None
+
+    def gravar():
+        return _gravar([atuais[t] for t in tics if t in atuais])
+
     try:
         for i, s in enumerate(sel.itertuples(), 1):
-            print(f"\n[{i}/{n}] TIC {s.tic}", flush=True)
+            tic = int(s.tic)
+            acao = plano(anteriores.get(tic), refazer)
+            if acao == "manter":
+                atuais[tic]["decisao"] = s.decisao
+                contagem["mantida"] += 1
+                print(f"\n[{i}/{n}] TIC {tic}: ficha já pronta, mantida", flush=True)
+                continue
             t0 = time.monotonic()
             try:
-                f = montar_ficha(s)
+                if acao.startswith("completar"):
+                    faltas = acao.split(":")[1].split(",")
+                    nomes = {"vizier": "busca no VizieR", "gaia": "fonte Gaia DR3"}
+                    print(f"\n[{i}/{n}] TIC {tic}: completando a ficha (faltava: "
+                          + " e ".join(nomes[k] for k in faltas) + ")", flush=True)
+                    f = completar_buscas(dict(anteriores[tic]), s, faltas)
+                    f["decisao"] = s.decisao
+                    contagem["completada"] += 1
+                else:
+                    print(f"\n[{i}/{n}] TIC {tic}", flush=True)
+                    f = montar_ficha(s)
+                    contagem["nova"] += 1
             except Exception as e:
                 print(f"  falhou: {str(e)[:100] or type(e).__name__}. Seguindo para a próxima.",
                       flush=True)
-                falhas.append(int(s.tic))
+                falhas.append(tic)
                 continue
-            fichas.append(f)
-            saida = _gravar(fichas)
+            atuais[tic] = f
+            saida = gravar()
             print(f"  pronta: período {f['periodo_d']:.5f} d, tipo sugerido {f['tipo_sugerido']} "
                   f"({_tempo(time.monotonic() - t0)})", flush=True)
     except KeyboardInterrupt:
         print("\nInterrompido.", flush=True)
     print()
+    fichas = [atuais[t] for t in tics if t in atuais]
     if not fichas:
         print("Nenhuma ficha pronta.", flush=True)
         return None
+    saida = gravar()
     pend = [f for f in fichas if f.get("avisos")]
-    print(f"{len(fichas)} ficha{'s' if len(fichas) != 1 else ''} pronta{'s' if len(fichas) != 1 else ''} "
-          f"em {_caminho(saida)} (curvas em {_caminho(VSX_DIR)}/<tic>_fase.png).", flush=True)
-    if len(fichas) + len(falhas) < n:
-        print(f"Faltaram {n - len(fichas) - len(falhas)} estrela(s) por causa da interrupção: "
-              "rode de novo para refazer.", flush=True)
+    feitas = sum(contagem.values())
+    print(f"{len(fichas)} ficha{'s' if len(fichas) != 1 else ''} em {_caminho(saida)} "
+          f"(curvas em {_caminho(VSX_DIR)}/<tic>_fase.png): {contagem['mantida']} "
+          f"mantida{'s' if contagem['mantida'] != 1 else ''}, {contagem['completada']} "
+          f"completada{'s' if contagem['completada'] != 1 else ''}, {contagem['nova']} "
+          f"nova{'s' if contagem['nova'] != 1 else ''}.", flush=True)
+    if feitas + len(falhas) < n:
+        print(f"Faltaram {n - feitas - len(falhas)} estrela(s) por causa da interrupção: "
+              "rode de novo para continuar.", flush=True)
     if falhas:
-        print("Falharam: " + ", ".join(f"TIC {t}" for t in falhas), flush=True)
+        print("Falharam: " + ", ".join(f"TIC {t}" for t in falhas)
+              + " (rode de novo para tentar outra vez).", flush=True)
+    sem_vizier = [f for f in pend if AVISO_VIZIER in str(f.get("avisos"))]
+    sem_gaia = [f for f in pend if AVISO_GAIA in str(f.get("avisos"))]
     if pend:
-        print("Com aviso pendente (busca não feita, veja a ficha): "
-              + ", ".join(f"TIC {f['tic']}" for f in pend), flush=True)
-    print("Próximo passo: conferir cada estrela no VSX online (vsx.aavso.org) e submeter; "
-          "veja o Passo a passo no README.", flush=True)
+        print("\nATENÇÃO: ficha incompleta em " + ", ".join(f"TIC {f['tic']}" for f in pend)
+              + ". Não submeta essas ainda.", flush=True)
+    if sem_vizier:
+        print(f"  Em {len(sem_vizier)}, a busca em todos os catálogos do VizieR não respondeu. Essa "
+              "busca acha artigos que já publicaram a estrela e que a Fase 5 não cobre.", flush=True)
+    if sem_gaia:
+        print(f"  Em {len(sem_gaia)}, a fonte Gaia DR3 não veio: posição, V e nome Gaia ficaram "
+              "em branco.", flush=True)
+    if pend:
+        print("  O que fazer: rode `python -u src/ficha_vsx.py` de novo mais tarde (o servidor do "
+              "VizieR oscila; só a busca que faltou é refeita), ou confira à mão como diz o "
+              "aviso no topo de cada ficha em data/vsx/fichas.md.", flush=True)
+    print("\nPróximo passo" + (" para as fichas completas" if pend else "") + ": conferir cada "
+          "estrela no VSX online (vsx.aavso.org) e submeter; veja o Passo a passo no README.",
+          flush=True)
     return saida
 
 
@@ -385,5 +531,8 @@ if __name__ == "__main__":
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--duvidas", action="store_true", help="inclui as marcadas como duvida")
     g.add_argument("--todas", action="store_true", help="todas as candidatas, revisadas ou nao")
+    ap.add_argument("--refazer", action="store_true",
+                    help="ignora fichas.csv e refaz tudo (por padrão a ficha pronta é mantida)")
     a = ap.parse_args()
-    run(None if a.todas else ("confirmado", "duvida") if a.duvidas else ("confirmado",))
+    run(None if a.todas else ("confirmado", "duvida") if a.duvidas else ("confirmado",),
+        refazer=a.refazer)
