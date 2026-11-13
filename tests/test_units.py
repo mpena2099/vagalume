@@ -423,6 +423,18 @@ def test_marcos():
     assert dados.ler_marcos_manuais(conn) == {"Enviada ao VSX"}
 
 
+def test_descrever_erro():
+    import requests
+    from src.util import descrever_erro
+    assert descrever_erro(requests.exceptions.ReadTimeout()) == "tempo esgotado"
+    assert descrever_erro(TimeoutError()) == "tempo esgotado"
+    assert descrever_erro(requests.exceptions.ConnectionError()) == "sem conexão"
+    r = requests.Response()
+    r.status_code = 502
+    assert descrever_erro(requests.exceptions.HTTPError(response=r)) == "erro no servidor (502)"
+    assert descrever_erro(ValueError("x")) == "ValueError"
+
+
 if __name__ == "__main__":
     for nome, fn in list(globals().items()):
         if nome.startswith("test_"):

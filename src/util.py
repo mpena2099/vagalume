@@ -27,15 +27,31 @@ def com_prazo(fn, segundos: float):
     return saida.get("valor")
 
 
+def descrever_erro(e: BaseException) -> str:
+    """Motivo curto de uma falha de rede, para a mensagem de retry."""
+    import requests
+    resposta = getattr(e, "response", None)
+    codigo = getattr(resposta, "status_code", None)
+    if isinstance(e, requests.exceptions.HTTPError) and codigo and codigo >= 500:
+        return f"erro no servidor ({codigo})"
+    if isinstance(e, (TimeoutError, requests.exceptions.Timeout)) or "timeout" in type(e).__name__.lower():
+        return "tempo esgotado"
+    if isinstance(e, (ConnectionError, requests.exceptions.ConnectionError)):
+        return "sem conexão"
+    return type(e).__name__
+
+
 def retry(fn, servico: str, retries: int = 4, delay: float = 5.0):
     for attempt in range(retries):
         try:
             return fn()
         except Exception as e:
             if attempt < retries - 1:
-                print(f"  {servico} retry {attempt+1}/{retries}: {e}")
                 # espera crescente (5, 10, 20 s): queda do MAST costuma durar mais que 5 s
-                time.sleep(delay * 2 ** attempt)
+                espera = delay * 2 ** attempt
+                print(f"  {servico} não respondeu (tentativa {attempt+1} de {retries}: "
+                      f"{descrever_erro(e)}). Nova tentativa em {espera:.0f} s.", flush=True)
+                time.sleep(espera)
             else:
                 raise
     return None

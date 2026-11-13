@@ -14,7 +14,13 @@ a mao para o New Star Wizard. Tipo e periodo sao sugestoes, conferir na figura.
 import argparse
 import sqlite3
 import sys
+import time
+import warnings
 from pathlib import Path
+
+# aviso inofensivo do lightkurve (oktopus nao instalado); tem de vir antes do import dele
+warnings.filterwarnings("ignore", message=".*tpfmodel submodule.*", category=UserWarning,
+                        module=r"lightkurve.*")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -36,6 +42,13 @@ from src.periodo_setores import medir_periodo_setores
 from src.util import retry
 
 BTJD_PARA_BJD = 2457000.0
+# Gaia e VizieR inteiro nao podem segurar a rodada: poucas tentativas e prazo curto
+CONSULTA_TENTATIVAS = 2
+CONSULTA_TIMEOUT_S = 90
+AVISO_VIZIER = ("Busca no VizieR inteiro não feita (servidor sem resposta): confira à mão em "
+                "vizier.cds.unistra.fr ou num espelho antes de submeter.")
+AVISO_GAIA = ("Fonte Gaia DR3 não obtida (servidor sem resposta): posição, V estimada e nome "
+              "Gaia ficam em branco; confira à mão no Gaia ou no VizieR antes de submeter.")
 # Descricao de catalogo VizieR que indica variabilidade: onde a estrela pode ter entrado
 # depois da varredura (a Fase 5 cobre so a lista fixa dela)
 PALAVRAS_VARIAVEL = ("variab", "eclips", "binar", "periodic", "pulsat", "rotation",
@@ -117,8 +130,9 @@ def eh_catalogo_variavel(descricao: str) -> bool:
 
 def _gaia(alvo: SkyCoord) -> dict:
     res = retry(lambda: Vizier(columns=["Source", "RA_ICRS", "DE_ICRS", "Gmag", "BP-RP", "_r"],
-                               row_limit=-1)
-                .query_region(alvo, radius=5 * u.arcsec, catalog="I/355/gaiadr3"), "VizieR")
+                               row_limit=-1, timeout=CONSULTA_TIMEOUT_S)
+                .query_region(alvo, radius=5 * u.arcsec, catalog="I/355/gaiadr3"),
+                "VizieR", retries=CONSULTA_TENTATIVAS)
     if not len(res):
         return {}
     t = res[0].to_pandas().dropna(subset=["Gmag"])
@@ -137,8 +151,8 @@ def _gaia(alvo: SkyCoord) -> dict:
 
 def _vizier(alvo: SkyCoord) -> list[str]:
     """Catalogos de variaveis a ate 30" (o pixel do TESS tem 21")."""
-    res = retry(lambda: Vizier(columns=["_r"], row_limit=5, timeout=180)
-                .query_region(alvo, radius=30 * u.arcsec), "VizieR")
+    res = retry(lambda: Vizier(columns=["_r"], row_limit=5, timeout=CONSULTA_TIMEOUT_S)
+                .query_region(alvo, radius=30 * u.arcsec), "VizieR", retries=CONSULTA_TENTATIVAS)
     achados = []
     for nome in res.keys():
         descricao = str(res[nome].meta.get("description", ""))
@@ -176,11 +190,14 @@ def setores_da_candidata(s) -> list[int]:
 def _carregar_setores(s) -> list[tuple[int, object]]:
     """Curvas cruas por setor. Setor extra sem produto e pulado, nao derruba a ficha."""
     curvas = []
-    for setor in setores_da_candidata(s):
+    setores = setores_da_candidata(s)
+    print(f"  baixando {len(setores)} setor{'es' if len(setores) != 1 else ''} do TESS...", flush=True)
+    for k, setor in enumerate(setores, 1):
+        print(f"    setor {setor} ({k}/{len(setores)})", flush=True)
         try:
             lc, _ = baixar_curva(int(s.tic), setor, s.autor)
         except Exception as e:
-            print(f"  TIC {s.tic}: setor {setor} falhou ({str(e)[:80]}), pulando")
+            print(f"    setor {setor} falhou ({str(e)[:80]}), pulando", flush=True)
             continue
         curvas.append((setor, lc))
     if not curvas:
@@ -197,7 +214,9 @@ def _juntar(curvas) -> tuple[np.ndarray, np.ndarray]:
 
 def montar_ficha(s) -> dict:
     alvo = SkyCoord(s.ra, s.dec, unit="deg")
+    avisos = []
     brutas = _carregar_setores(s)
+    print("  medindo o período", flush=True)
     janela = BLS_FLATTEN_D if s.metodo == "bls" else LS_FLATTEN_D
     curvas = [_arrays(_flatten(lc, janela)) for _, lc in brutas]
     tempo, fluxo = _juntar(curvas)
@@ -222,6 +241,7 @@ def montar_ficha(s) -> dict:
                      else f"; secundario na fase {sec:.3f}"
                      + (" (orbita excentrica)" if abs(sec - 0.5) > 0.02 else ""))
                   + f"; periodo pelos instantes dos eclipses em {len(brutas)} setores")
+    print("  gerando a curva em fase", flush=True)
     figura = VSX_DIR / f"{s.tic}_fase.png"
     _figura(int(s.tic), tempo, fluxo, periodo, epoca, figura)
     ficha = {"tic": int(s.tic), "decisao": s.decisao, "periodo_d": periodo,
@@ -234,11 +254,20 @@ def montar_ficha(s) -> dict:
              "setores_usados": ",".join(str(setor) for setor, _ in brutas),
              "suspeito_blend": bool(s.suspeito_blend), "figura_fase": str(figura),
              "figura_triagem": s.figura}
-    ficha.update(_gaia(alvo))
+    print("  buscando a fonte no Gaia DR3", flush=True)
+    try:
+        ficha.update(_gaia(alvo))
+    except Exception as e:
+        print(f"  Gaia sem resposta ({type(e).__name__}); seguindo sem a fonte", flush=True)
+        avisos.append(AVISO_GAIA)
+    print("  buscando em todos os catálogos do VizieR (pode levar minutos)", flush=True)
     try:
         ficha["vizier_variaveis"] = "; ".join(_vizier(alvo)) or "nenhum catalogo de variaveis a 30\""
     except Exception as e:
-        ficha["vizier_variaveis"] = f"consulta falhou: {str(e)[:80]}"
+        print(f"  VizieR sem resposta ({type(e).__name__}); seguindo sem essa busca", flush=True)
+        ficha["vizier_variaveis"] = "busca não feita"
+        avisos.append(AVISO_VIZIER)
+    ficha["avisos"] = " | ".join(avisos)
     return ficha
 
 
@@ -254,6 +283,9 @@ def _markdown(f: dict) -> str:
     secundario = (f"| Secundario | fase {f['fase_secundario']:.3f} |\n"
                   if pd.notna(f.get("fase_secundario")) else "")
     alerta = f"**Alerta: {f['alerta_periodo']}**\n\n" if f.get("alerta_periodo") else ""
+    for aviso in str(f.get("avisos") or "").split(" | "):
+        if aviso:
+            alerta += f"**Aviso: {aviso}**\n\n"
     return f"""## TIC {f['tic']} ({f['decisao']})
 
 {alerta}| Campo do VSX | Valor |
@@ -274,31 +306,77 @@ def _markdown(f: dict) -> str:
 """
 
 
+def _gravar(fichas: list[dict]) -> Path:
+    pd.DataFrame(fichas).to_csv(VSX_DIR / "fichas.csv", index=False)
+    saida = VSX_DIR / "fichas.md"
+    saida.write_text("# Fichas para o VSX\n\nChecklist completo na secao 11 de `especificacao.md`. "
+                     "Tipo e periodo sao sugestoes: conferir na curva em fase antes de enviar.\n\n"
+                     + "\n".join(_markdown(f) for f in fichas), encoding="utf-8")
+    return saida
+
+
+def _tempo(segundos: float) -> str:
+    m, s = divmod(int(round(segundos)), 60)
+    return f"{m} min {s} s" if m else f"{s} s"
+
+
+def _caminho(p: Path) -> str:
+    try:
+        return str(p.relative_to(Path(__file__).resolve().parent.parent))
+    except ValueError:
+        return str(p)
+
+
 def run(decisoes=("confirmado",)) -> Path | None:
     with sqlite3.connect(SQLITE_PATH) as con:
         cand = carregar_candidatos(con)
     sel = cand if decisoes is None else cand[cand["decisao"].isin(decisoes)]
     if sel.empty:
-        print("Nenhuma candidata confirmada. Revise no app (streamlit run app/revisao.py).")
+        print("Nenhuma candidata confirmada. Revise no app (python iniciar.py).")
         return None
     VSX_DIR.mkdir(parents=True, exist_ok=True)
-    fichas = []
-    for i, s in enumerate(sel.itertuples(), 1):
-        try:
-            f = montar_ficha(s)
-        except Exception as e:
-            print(f"  {i}/{len(sel)} TIC {s.tic}: falhou ({str(e)[:100]})")
-            continue
-        fichas.append(f)
-        print(f"  {i}/{len(sel)} TIC {s.tic}: {f['tipo_sugerido']} P={f['periodo_d']:.5f} d, "
-              f"V~{f.get('v_estimada', float('nan')):.2f}, amp {f['amplitude_mag_tess']:.3f} mag")
-    df = pd.DataFrame(fichas)
-    df.to_csv(VSX_DIR / "fichas.csv", index=False)
-    saida = VSX_DIR / "fichas.md"
-    saida.write_text("# Fichas para o VSX\n\nChecklist completo na secao 11 de `especificacao.md`. "
-                     "Tipo e periodo sao sugestoes: conferir na curva em fase antes de enviar.\n\n"
-                     + "\n".join(_markdown(f) for f in fichas), encoding="utf-8")
-    print(f"  Fichas em {saida}")
+    n = len(sel)
+    quais = ("candidatas da Fase 7" if decisoes is None
+             else " e ".join("em dúvida" if d == "duvida" else f"{d}s".replace("ados", "adas")
+                        for d in decisoes))
+    print(f"Fase 8: fichas do VSX de {n} estrela{'s' if n != 1 else ''} ({quais}). "
+          "Leva alguns minutos por estrela.", flush=True)
+    print("Ctrl+C a qualquer momento: as fichas já prontas ficam salvas.", flush=True)
+    fichas, falhas, saida = [], [], None
+    try:
+        for i, s in enumerate(sel.itertuples(), 1):
+            print(f"\n[{i}/{n}] TIC {s.tic}", flush=True)
+            t0 = time.monotonic()
+            try:
+                f = montar_ficha(s)
+            except Exception as e:
+                print(f"  falhou: {str(e)[:100] or type(e).__name__}. Seguindo para a próxima.",
+                      flush=True)
+                falhas.append(int(s.tic))
+                continue
+            fichas.append(f)
+            saida = _gravar(fichas)
+            print(f"  pronta: período {f['periodo_d']:.5f} d, tipo sugerido {f['tipo_sugerido']} "
+                  f"({_tempo(time.monotonic() - t0)})", flush=True)
+    except KeyboardInterrupt:
+        print("\nInterrompido.", flush=True)
+    print()
+    if not fichas:
+        print("Nenhuma ficha pronta.", flush=True)
+        return None
+    pend = [f for f in fichas if f.get("avisos")]
+    print(f"{len(fichas)} ficha{'s' if len(fichas) != 1 else ''} pronta{'s' if len(fichas) != 1 else ''} "
+          f"em {_caminho(saida)} (curvas em {_caminho(VSX_DIR)}/<tic>_fase.png).", flush=True)
+    if len(fichas) + len(falhas) < n:
+        print(f"Faltaram {n - len(fichas) - len(falhas)} estrela(s) por causa da interrupção: "
+              "rode de novo para refazer.", flush=True)
+    if falhas:
+        print("Falharam: " + ", ".join(f"TIC {t}" for t in falhas), flush=True)
+    if pend:
+        print("Com aviso pendente (busca não feita, veja a ficha): "
+              + ", ".join(f"TIC {f['tic']}" for f in pend), flush=True)
+    print("Próximo passo: conferir cada estrela no VSX online (vsx.aavso.org) e submeter; "
+          "veja o Passo a passo no README.", flush=True)
     return saida
 
 
