@@ -266,6 +266,15 @@ def ler_marcos_manuais(conn: sqlite3.Connection) -> set[str]:
     return {r[0] for r in conn.execute("SELECT nome FROM marcos_manuais")}
 
 
+def sem_ficha(confirmadas: set[int], fichas_csv: Path) -> set[int]:
+    """Confirmadas que ainda nao estao no fichas.csv da Fase 8."""
+    try:
+        feitas = set(pd.read_csv(fichas_csv)["tic"].astype(int))
+    except Exception:  # sem arquivo ou sem coluna tic
+        feitas = set()
+    return set(confirmadas) - feitas
+
+
 def marcos(conn: sqlite3.Connection, fichas_csv: Path) -> list[dict]:
     """Etapas do trabalho: acerto e avanco contam, confirmar candidata nao."""
     r = resumo_treino(ler_tentativas(conn))
@@ -284,20 +293,15 @@ def marcos(conn: sqlite3.Connection, fichas_csv: Path) -> list[dict]:
     fila = {"nome": "Fila revisada", "feito": bool(len(cand)) and revisadas == len(cand),
             "detalhe": f"{revisadas} de {len(cand)}"}
 
-    prontas = 0
-    existe = Path(fichas_csv).exists()
-    if existe:
-        try:
-            f = pd.read_csv(fichas_csv)
-        except Exception:
-            f = pd.DataFrame()
-        if "decisao" in f.columns:
-            prontas = int((f["decisao"] == "confirmado").sum())
-    if prontas:
-        detalhe_ficha = f"{prontas} confirmada{'s' if prontas != 1 else ''}"
+    confirmadas = set(cand.loc[cand["decisao"] == "confirmado", "tic"].astype(int)) if not cand.empty else set()
+    faltam = sem_ficha(confirmadas, fichas_csv)
+    if not confirmadas:
+        detalhe_ficha = "rode a Fase 8 depois de confirmar"
+    elif faltam:
+        detalhe_ficha = f"faltam {len(faltam)}: rode python -u src/ficha_vsx.py"
     else:
-        detalhe_ficha = "nenhuma confirmada ainda" if existe else "rode a Fase 8 depois de confirmar"
-    ficha = {"nome": "Ficha pronta", "feito": prontas > 0, "detalhe": detalhe_ficha}
+        detalhe_ficha = f"{len(confirmadas)} confirmada{'s' if len(confirmadas) != 1 else ''}"
+    ficha = {"nome": "Ficha pronta", "feito": bool(confirmadas) and not faltam, "detalhe": detalhe_ficha}
 
     manuais = ler_marcos_manuais(conn)
     return [treino, fila, ficha] + [

@@ -118,7 +118,7 @@ def progresso():
                        "suas decisões não são tocadas.")
 
 
-def painel_busca(pendentes: int):
+def painel_busca(pendentes: int, sem_ficha: int = 0):
     """Busca de mais candidatas: progresso se roda; resultado da ultima; botao se a fila acabou."""
     if execucao.rodando():
         progresso()
@@ -140,6 +140,13 @@ def painel_busca(pendentes: int):
         st.button("Ok", on_click=esquecer_busca)
     if pendentes == 0:
         st.success("Fila revisada: nenhuma candidata pendente.")
+        if sem_ficha:
+            st.info(f"**Próximo passo: a ficha do VSX.** {sem_ficha} confirmada(s) sem ficha. No "
+                    "terminal, na pasta do projeto, rode `python -u src/ficha_vsx.py` (Fase 8; "
+                    "`--duvidas` inclui as dúvidas). Ela mede o período com todos os setores do "
+                    "TESS, sugere o tipo e grava `data/vsx/fichas.md`. Leva alguns minutos por "
+                    "estrela. Depois confira cada estrela no VSX online (vsx.aavso.org) e "
+                    "submeta pelo formulário do VSX.")
         botao_buscar("buscar_fim")
 
 
@@ -169,7 +176,8 @@ with st.expander("Marcar envio ao VSX"):
         st.checkbox(nome, value=nome in manuais, key=f"marco_{nome}",
                     on_change=marcar_marco, args=(nome,))
 pendentes = len(todos) - revisados
-painel_busca(pendentes)
+confirmadas = set(todos.loc[todos["decisao"] == "confirmado", "tic"].astype(int))
+painel_busca(pendentes, len(dados.sem_ficha(confirmadas, VSX_DIR / "fichas.csv")))
 if pendentes and not execucao.rodando():
     with st.sidebar.expander("Buscar mais candidatas"):
         st.caption(f"Ainda há {pendentes} pendente(s): o ideal é revisar antes.")

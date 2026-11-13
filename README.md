@@ -16,7 +16,7 @@ Pipeline pessoal de mineração de dados astronômicos que procura **estrelas va
 
 ## English summary
 
-Vagalume is a personal data-mining pipeline that searches public **TESS** light curves for **uncatalogued variable stars**, aiming at submissions to the AAVSO **VSX** catalogue. Seven sequential phases share state through SQLite: a sanity check that recovers known variables (WASP-18 b and two eclipsing binaries, periods within 0.1%), target selection from one TESS sector, light-curve download (QLP/TESS-SPOC via MAST), period search (Lomb-Scargle and BLS), cross-match against VSX, ATLAS, TESS-EBs, other TESS variability catalogues (including Wang+2025 from China-VO), Gaia DR2/DR3, ZTF, ASAS-SN, TOI and SIMBAD, a contamination check (variable neighbours, Gaia blends, persistence across other sectors) and one diagnostic figure per candidate, including a per-pixel signal map. A local Streamlit app supports human review. First run (sector 55, Cygnus, 500 stars): 39 periodic signals, 13 not found in any variable-star catalogue within 30", 9 candidates awaiting visual review. Code and docs are in Portuguese; `config.py` holds every parameter. Run with `python pipeline.py` (or `--proximo` to pick the next sky field automatically); offline tests with `python tests/test_units.py`.
+Vagalume is a personal data-mining pipeline that searches public **TESS** light curves for **uncatalogued variable stars**, aiming at submissions to the AAVSO **VSX** catalogue. Seven sequential phases share state through SQLite: a sanity check that recovers known variables (WASP-18 b and two eclipsing binaries, periods within 0.1%), target selection from one TESS sector, light-curve download (QLP/TESS-SPOC via MAST), period search (Lomb-Scargle and BLS), cross-match against VSX, ATLAS, TESS-EBs, other TESS variability catalogues (including Wang+2025 from China-VO), Gaia DR2/DR3, ZTF, ASAS-SN, TOI and SIMBAD, a contamination check (variable neighbours, Gaia blends, persistence across other sectors) and one diagnostic figure per candidate, including a per-pixel signal map. A local Streamlit app supports human review. First run (sector 55, Cygnus, 566 stars): 51 periodic signals, 19 not found in any variable-star catalogue within 30", 14 candidates; visual review confirmed 4, left 3 as doubtful and rejected 7. Code and docs are in Portuguese; `config.py` holds every parameter. Run with `python pipeline.py` (or `--proximo` to pick the next sky field automatically); offline tests with `python tests/test_units.py`.
 
 ## Em palavras simples
 
@@ -48,11 +48,11 @@ Fases sequenciais que se comunicam por tabelas SQLite em `data/vagalume.db`. Cad
 | revisão | `app/revisao.py` + `app/paginas/` | App local (Streamlit) para olhar cada candidata e marcar confirmar, dúvida ou descartar | `revisao_humana` |
 | 8 | `ficha_vsx` | Para as confirmadas, monta a ficha do VSX: fonte Gaia DR3, V estimada, período medido com todos os setores do TESS (com o erro e um alerta quando os setores não concordam), tipo sugerido, época do mínimo em BJD, amplitude e curva em fase, e refaz a busca no VizieR inteiro | `data/vsx/` |
 
-O envio ao VSX é manual (não há API): copie os campos da ficha para o formulário, seguindo o checklist da seção 11 da [especificação](especificacao.md). Tipo e período da ficha são sugestões; confira na curva em fase.
+O envio ao VSX é manual (não há API): veja o [passo a passo](#passo-a-passo). Tipo e período da ficha são sugestões; confira na curva em fase.
 
 ## Estado
 
-As oito fases estão implementadas (a 8, ficha do VSX, roda à mão depois da revisão). A Fase 1 redescobre WASP-18 b, uma binária eclipsante destacada e uma de contato, com o período dentro de 0,1% da referência. A primeira varredura, no setor 55 (Cygnus, plano da Via Láctea), processou 566 estrelas: 51 com sinal periódico, 19 sem variável catalogada a menos de 30" e 14 candidatas depois da checagem de vizinhas e da repetição em outros setores. Elas aguardam a revisão visual. Detalhes técnicos, cortes, catálogos e riscos em [`especificacao.md`](especificacao.md).
+As oito fases estão implementadas (a 8, ficha do VSX, roda à mão depois da revisão). A Fase 1 redescobre WASP-18 b, uma binária eclipsante destacada e uma de contato, com o período dentro de 0,1% da referência. A primeira varredura, no setor 55 (Cygnus, plano da Via Láctea), processou 566 estrelas: 51 com sinal periódico, 19 sem variável catalogada a menos de 30" e 14 candidatas depois da checagem de vizinhas e da repetição em outros setores. Na revisão visual, 4 foram confirmadas, 3 ficaram em dúvida e 7 foram descartadas. Detalhes técnicos, cortes, catálogos e riscos em [`especificacao.md`](especificacao.md).
 
 ## Achados
 
@@ -65,6 +65,19 @@ O que o projeto encontrou até agora, inclusive o que não deu certo:
 | Uma candidata, a TIC 64711184, já estava publicada como pulsante SPB (catálogo J/ApJS/268/16), fora das listas que o pipeline cruzava | Saiu da fila: o catálogo entrou no cruzamento | Daí veio a busca no VizieR inteiro antes da ficha do VSX, e os catálogos achados assim passaram a ser cruzados |
 
 ## Uso
+
+### Passo a passo
+
+1. **Instale** o ambiente (comandos logo abaixo) e rode o pipeline: `python -u pipeline.py` no campo padrão ou `--proximo` para um campo novo. Leva de 1 a 2 horas.
+2. **Treine** no app (`python iniciar.py`, página Treino) até acertar uns 80% das últimas 20. O treino usa estrelas já conhecidas e mostra a resposta depois de cada caso.
+3. **Revise a fila** no app: Confirmar, Dúvida ou Descartar em cada candidata. Veja [como classificar](#revisão-visual-como-classificar).
+4. **Gere as fichas do VSX** (Fase 8) no terminal: `python -u src/ficha_vsx.py`, ou com `--duvidas` para incluir as dúvidas. Ela leva alguns minutos por estrela, mostra o progresso no terminal e, ao terminar, grava `data/vsx/fichas.md`, com o que o formulário do VSX pede, e a curva em fase de cada uma (`data/vsx/<tic>_fase.png`). O app avisa quando há confirmada sem ficha.
+5. **Confira cada estrela no VSX online** ([vsx.aavso.org](https://vsx.aavso.org)), buscando pelas coordenadas: se alguém a submeteu antes, ela já aparece lá.
+6. **Submeta.** Crie uma conta na [AAVSO](https://www.aavso.org) (grátis), entre no VSX e use o formulário de nova variável. Copie os campos da ficha seguindo o checklist da seção 11 da [especificação](especificacao.md) e anexe a curva em fase. As primeiras submissões de um usuário novo passam por um moderador e podem levar alguns dias.
+7. **Marque no app** (expander "Marcar envio ao VSX" na fila): "Enviada ao VSX" ao submeter e "Aceita no VSX" quando aparecer no catálogo.
+8. **Busque mais candidatas** (botão no app ou `python -u pipeline.py --proximo`) e volte ao passo 3.
+
+### Comandos
 
 ```bash
 python3 -m venv venv && source venv/bin/activate   # Linux e macOS
