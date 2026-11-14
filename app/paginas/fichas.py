@@ -12,7 +12,6 @@ import streamlit as st
 
 from app import dados, estilo, paineis, vsx
 from config import DEMO, MARCA_PODE_SUBMETER, SQLITE_PATH, VSX_DIR
-from src.ficha_vsx import ler_fichas
 
 DESCRICAO = "Confira cada estrela confirmada, copie os campos no VSX e marque o envio."
 FILTROS = ["A enviar", "Todas", "Enviadas", "Aceitas"]
@@ -112,6 +111,10 @@ ICONES = {"ok": "✅", "atencao": "⚠️", "bloqueia": "❌"}
 
 estilo.cabecalho("Fichas do VSX", descricao=DESCRICAO)
 
+# o primeiro import do pipeline testa o CDS e leva alguns segundos
+with st.spinner("Carregando as fichas..."):
+    from src.ficha_vsx import ler_fichas
+
 try:
     with conectar() as conn:
         _cand = dados.carregar_candidatos(conn)
@@ -169,7 +172,8 @@ def detectar_aceites(envios: pd.DataFrame) -> list[tuple[int, str]]:
     return novos
 
 
-_aceites = detectar_aceites(envios)
+with st.spinner("Conferindo no VSX as estrelas já enviadas..."):
+    _aceites = detectar_aceites(envios)
 for _t, _nome in _aceites:
     st.toast(f"TIC {_t} aceita no VSX como {_nome}", icon=":material/check_circle:")
     st.success(f"TIC {_t} aceita no VSX como {_nome}.")
@@ -333,7 +337,8 @@ tic = st.session_state["ficha_sel"]
 f = fichas[tic]
 e = por_tic.get(tic, {})
 st.session_state.setdefault(f"tipo_{tic}", tipo_inicial(tic))
-achados, falhou = vsx_da_ficha(f)
+with st.spinner(f"Consultando o VSX em volta da TIC {tic}..."):
+    achados, falhou = vsx_da_ficha(f)
 pend = pendencias_de(tic, achados)
 if falhou:
     pend.append(("atencao", "VSX não respondeu agora"))
