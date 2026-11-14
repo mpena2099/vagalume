@@ -177,6 +177,23 @@ def tipo_de(tic: int) -> str | None:
     return st.session_state[f"tipo_{tic}"] if f"tipo_{tic}" in st.session_state else tipo_inicial(tic)
 
 
+def o_que_falta(tic: int) -> str:
+    """Resumo curto das pendencias locais, para a tabela."""
+    curtos = []
+    for nivel, texto in vsx.pendencias(fichas[tic], tipo_de(tic), []):
+        if nivel == "ok":
+            continue
+        if texto.startswith("Escolha o tipo"):
+            curtos.append("Escolher o tipo")
+        elif texto.startswith("Períodos"):
+            curtos.append("Conferir período")
+        elif texto.startswith("Vizinha"):
+            curtos.append("Conferir vizinha (blend)")
+        elif nivel == "bloqueia":
+            curtos.append("Aviso da ficha")
+    return ", ".join(dict.fromkeys(curtos)) or "Nada"
+
+
 def situacao_local(tic: int) -> str:
     """Situacao so com dados locais (ficha, tipo, envio): nenhuma consulta de rede."""
     e = por_tic.get(tic, {})
@@ -237,6 +254,8 @@ if visiveis:
         "TIC": visiveis,
         "Tipo": [tipo_de(t) or "?" for t in visiveis],
         "Situação": [situacoes[t].capitalize() for t in visiveis],
+        "O que falta": ["" if situacoes[t] in enviadas_ou_aceitas else o_que_falta(t)
+                        for t in visiveis],
         "P (d)": [fichas[t].get("periodo_d") for t in visiveis],
         "V": [fichas[t].get("v_estimada") for t in visiveis],
     })
