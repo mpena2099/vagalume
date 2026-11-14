@@ -446,7 +446,7 @@ def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
     # fichas.csv/.md refletem a selecao atual; estrela ainda nao tratada nesta rodada
     # continua com a ficha anterior, para uma interrupcao nao apagar trabalho feito
     atuais: dict[int, dict] = {t: anteriores[t] for t in tics if t in anteriores}
-    contagem = {"mantida": 0, "completada": 0, "nova": 0}
+    contagem = {"mantida": 0, "completada": 0, "incompleta": 0, "nova": 0}
     falhas, saida = [], None
 
     def gravar():
@@ -470,7 +470,7 @@ def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
                           + " e ".join(nomes[k] for k in faltas) + ")", flush=True)
                     f = completar_buscas(dict(anteriores[tic]), s, faltas)
                     f["decisao"] = s.decisao
-                    contagem["completada"] += 1
+                    contagem["incompleta" if f.get("avisos") else "completada"] += 1
                 else:
                     print(f"\n[{i}/{n}] TIC {tic}", flush=True)
                     f = montar_ficha(s)
@@ -482,7 +482,7 @@ def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
                 continue
             atuais[tic] = f
             saida = gravar()
-            print(f"  pronta: período {f['periodo_d']:.5f} d, tipo sugerido {f['tipo_sugerido']} "
+            print(f"  {'ainda incompleta' if f.get('avisos') else 'pronta'}: período {f['periodo_d']:.5f} d, tipo sugerido {f['tipo_sugerido']} "
                   f"({_tempo(time.monotonic() - t0)})", flush=True)
     except KeyboardInterrupt:
         print("\nInterrompido.", flush=True)
@@ -497,7 +497,10 @@ def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
     print(f"{len(fichas)} ficha{'s' if len(fichas) != 1 else ''} em {_caminho(saida)} "
           f"(curvas em {_caminho(VSX_DIR)}/<tic>_fase.png): {contagem['mantida']} "
           f"mantida{'s' if contagem['mantida'] != 1 else ''}, {contagem['completada']} "
-          f"completada{'s' if contagem['completada'] != 1 else ''}, {contagem['nova']} "
+          f"completada{'s' if contagem['completada'] != 1 else ''}, "
+          + (f"{contagem['incompleta']} ainda incompleta{'s' if contagem['incompleta'] != 1 else ''}"
+             " (a busca não respondeu de novo), " if contagem["incompleta"] else "")
+          + f"{contagem['nova']} "
           f"nova{'s' if contagem['nova'] != 1 else ''}.", flush=True)
     if feitas + len(falhas) < n:
         print(f"Faltaram {n - feitas - len(falhas)} estrela(s) por causa da interrupção: "

@@ -215,7 +215,11 @@ def painel_ficha(sem_ficha: int):
                 "retoma.")
         st.button("Ok", on_click=esquecer_ficha, key="ficha_cancelada_ok")
     elif e["terminou"]:
-        st.success(f"Fichas geradas. {e['fim']}")
+        if dados.fichas_com_aviso(VSX_DIR / "fichas.csv"):
+            st.warning(f"A rodada terminou, mas há fichas incompletas: veja os avisos na página "
+                       f"Fichas. {e['fim']}")
+        else:
+            st.success(f"Fichas prontas. {e['fim']}")
         st.page_link("paginas/fichas.py", label="Abrir as fichas", icon=":material/menu_book:")
         st.button("Ok", on_click=esquecer_ficha, key="ficha_fim_ok")
     if sem_ficha:
