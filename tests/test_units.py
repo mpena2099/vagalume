@@ -86,7 +86,7 @@ def test_vizier_so_lista():
     assert fv.bloqueia(fv.AVISO_VIZIER) and fv.bloqueia(fv.AVISO_VIZIER_LISTA + " | " + fv.AVISO_GAIA)
     assert not fv.bloqueia("")
     # na volta do CDS a busca completa e refeita
-    assert fv.plano({"avisos": fv.AVISO_VIZIER_LISTA}) == "completar:vizier"
+    assert fv.plano({**NOVAS_FICHA, "avisos": fv.AVISO_VIZIER_LISTA}) == "completar:vizier"
     # CDS no ar: busca em todos; completar troca o aviso antigo (outra redacao) pelo novo
     antigo = "Busca no VizieR inteiro não feita (servidor sem resposta): confira à mão."
     with mock.patch.object(util, "VIZIER_ESPELHO", None), \
@@ -101,11 +101,15 @@ def test_vizier_so_lista():
         assert dados.fichas_com_aviso(csv, so_bloqueio=False) == {1, 2}
 
 
+NOVAS_FICHA = {"oc_fases": "55 +0.000, 56 +0.001", "blend_veredito": "ok", "blend_motivo": "m",
+               "gaia_params_fonte": "sem", "motivo_provavel": "m"}
+
+
 def test_ficha_vsx_retoma():
     from src.ficha_vsx import plano as _plano
     antigo = "Busca no VizieR inteiro não feita (servidor sem resposta): confira à mão em vizier.cds.unistra.fr ou num espelho antes de submeter."
-    assert _plano({"avisos": antigo}) == "completar:vizier"
-    assert _plano({"avisos": "outro aviso qualquer"}) == "nova"
+    assert _plano({**NOVAS_FICHA, "avisos": antigo}) == "completar:vizier"
+    assert _plano({**NOVAS_FICHA, "avisos": "outro aviso qualquer"}) == "nova"
     import tempfile
     import types
     from pathlib import Path
@@ -113,11 +117,18 @@ def test_ficha_vsx_retoma():
     import pandas as pd
     from src import ficha_vsx as fv
     assert fv.plano(None) == "nova"
-    assert fv.plano({"avisos": ""}) == "manter"
-    assert fv.plano({"avisos": ""}, refazer=True) == "nova"
-    assert fv.plano({"avisos": fv.AVISO_VIZIER}) == "completar:vizier"
-    assert fv.plano({"avisos": fv.AVISO_GAIA + " | " + fv.AVISO_VIZIER}) == "completar:gaia,vizier"
-    assert fv.plano({"avisos": "aviso desconhecido"}) == "nova"
+    assert fv.plano({**NOVAS_FICHA, "avisos": ""}) == "manter"
+    assert fv.plano({**NOVAS_FICHA, "avisos": ""}, refazer=True) == "nova"
+    assert fv.plano({**NOVAS_FICHA, "avisos": fv.AVISO_VIZIER}) == "completar:vizier"
+    assert fv.plano({**NOVAS_FICHA, "avisos": fv.AVISO_GAIA + " | " + fv.AVISO_VIZIER}
+                    ) == "completar:gaia,vizier"
+    sem_params = {k: v for k, v in NOVAS_FICHA.items() if k != "gaia_params_fonte"}
+    assert fv.plano({**sem_params, "avisos": fv.AVISO_GAIA}) == "completar:gaia,params,tipo"
+    assert fv.plano({**sem_params, "avisos": "", "gaia_dr3": 1}) == "completar:params,tipo"
+    assert fv.plano({"avisos": "", "gaia_dr3": 1}) == "completar:oc,blend,params,tipo"
+    assert fv.plano({**NOVAS_FICHA, "blend_motivo": fv.BLEND_SEM_CONSULTA + ": x"}
+                    ) == "completar:blend"
+    assert fv.plano({**NOVAS_FICHA, "avisos": "aviso desconhecido"}) == "nova"
 
     # o CSV volta igual, inclusive o ID Gaia de 19 digitos e as colunas vazias
     tmp_path = Path(tempfile.mkdtemp())
@@ -127,7 +138,7 @@ def test_ficha_vsx_retoma():
              "motivo_tipo": "m", "epoca_bjd": 2460000.1, "amplitude_mag_tess": 0.3,
              "setores": "55", "setores_usados": "55", "suspeito_blend": False,
              "figura_fase": "f.png", "figura_triagem": "t.png",
-             "vizier_variaveis": "busca não feita", "avisos": fv.AVISO_VIZIER}
+             "vizier_variaveis": "busca não feita", "avisos": fv.AVISO_VIZIER, **NOVAS_FICHA}
     outra = dict(ficha, tic=8, gaia_dr3=4_000_000_000_000_000_001, gaia_ra=1.0, gaia_dec=2.0,
                  gaia_g=12.0, v_estimada=12.5, gaia_sep_arcsec=0.4, avisos="")
     fv._gravar([ficha, outra])
@@ -670,6 +681,126 @@ def test_consultar_vsx():
     assert [a["nome"] for a in r] == ["V1", "V2"] and r[1]["periodo"] == "1.5"
 
 
+def test_aceite_detectado():
+    from app import vsx
+    assert vsx.aceite_detectado(None) is None and vsx.aceite_detectado([]) is None
+    longe = {"nome": "V9", "dist_arcsec": 25.0, "oid": "1"}
+    assert vsx.aceite_detectado([longe]) is None
+    perto = {"nome": "TIC 5 b", "dist_arcsec": 3.0, "oid": "2"}
+    medio = {"nome": "V8", "dist_arcsec": 9.0, "oid": "3"}
+    assert vsx.aceite_detectado([perto, medio, longe]) == "TIC 5 b"
+    assert vsx.aceite_detectado([medio]) == "V8"
+    assert vsx.aceite_detectado([{"nome": "", "dist_arcsec": 1.0, "oid": "7"}]) == "OID 7"
+    assert vsx.aceite_detectado([{"nome": "X", "dist_arcsec": 10.5, "oid": "1"}]) is None
+    assert vsx.aceite_detectado([{"nome": "X", "dist_arcsec": 10.5, "oid": "1"}], raio=11) == "X"
+
+
+def _banco_cand(linhas):
+    conn = sqlite3.connect(":memory:")
+    pd.DataFrame(linhas).to_sql("candidatos_fase7", conn)
+    return conn
+
+
+def test_descarte_automatico():
+    from config import DESLOCAMENTO_MAX_PX as L
+    conn = _banco_cand([
+        {"tic": 1, "deslocamento_px": 3 * L, "persistente": 1},    # longe: descarta
+        {"tic": 2, "deslocamento_px": 1.5 * L, "persistente": 0},  # fora e nao repete: descarta
+        {"tic": 3, "deslocamento_px": 1.5 * L, "persistente": 1},  # fora mas repete: humano
+        {"tic": 4, "deslocamento_px": 0.5 * L, "persistente": 0},  # dentro: humano
+        {"tic": 5, "deslocamento_px": None, "persistente": None},  # sem medida: humano
+        {"tic": 6, "deslocamento_px": 5 * L, "persistente": 1},    # humano ja confirmou
+        {"tic": 7, "deslocamento_px": 5 * L, "persistente": 1},    # humano ja pos duvida
+        {"tic": 8, "deslocamento_px": 1.5 * L, "persistente": None},  # sem outro setor: humano
+    ])
+    dados.salvar_revisao(conn, 6, "confirmado", "parece real")
+    dados.salvar_revisao(conn, 7, "duvida")
+    assert dados.descartar_automaticos(conn) == [1, 2]
+    assert dados.descartar_automaticos(conn) == []  # idempotente
+    df = dados.carregar_candidatos(conn).set_index("tic")
+    assert df["decisao"].to_dict() == {1: "descartado", 2: "descartado", 3: "pendente",
+                                       4: "pendente", 5: "pendente", 6: "confirmado",
+                                       7: "duvida", 8: "pendente"}
+    assert df.loc[1, "origem"] == "auto" and "outra estrela" in df.loc[1, "motivo_auto"]
+    assert "não se repete" in df.loc[2, "motivo_auto"]
+    assert pd.isna(df.loc[6, "origem"]) and df.loc[6, "nota"] == "parece real"
+    assert dados.ler_descartes_auto(conn)["tic"].tolist() == [1, 2]
+
+    # Rever: volta a pendente e nao e descartada de novo; decisao humana nao e apagada
+    assert dados.rever_auto(conn, 1) is True
+    assert dados.rever_auto(conn, 6) is False
+    assert dados.descartar_automaticos(conn) == []
+    df = dados.carregar_candidatos(conn).set_index("tic")
+    assert df.loc[1, "decisao"] == "pendente" and df.loc[6, "decisao"] == "confirmado"
+    # o humano pode decidir sobre uma descartada automaticamente: vira decisao humana
+    dados.salvar_revisao(conn, 2, "confirmado")
+    df = dados.carregar_candidatos(conn).set_index("tic")
+    assert df.loc[2, "decisao"] == "confirmado" and pd.isna(df.loc[2, "origem"])
+    assert dados.descartar_automaticos(conn) == []
+    # "Limpar decisao" num descarte automatico tambem nao o refaz sozinho
+    conn2 = _banco_cand([{"tic": 9, "deslocamento_px": 9.0, "persistente": 1}])
+    assert dados.descartar_automaticos(conn2) == [9]
+    dados.apagar_revisao(conn2, 9)
+    assert dados.descartar_automaticos(conn2) == []
+
+
+def test_revisao_tabela_antiga_ganha_colunas():
+    conn = _banco_cand([{"tic": 1, "deslocamento_px": 9.0, "persistente": 1},
+                        {"tic": 2, "deslocamento_px": 0.1, "persistente": 1}])
+    conn.execute("CREATE TABLE revisao_humana (tic INTEGER PRIMARY KEY, decisao TEXT NOT NULL, "
+                 "nota TEXT, atualizado_em TEXT NOT NULL)")
+    conn.execute("INSERT INTO revisao_humana VALUES (2, 'confirmado', 'x', '2026-01-01T00:00:00')")
+    conn.commit()
+    assert dados.descartar_automaticos(conn) == [1]
+    df = dados.carregar_candidatos(conn).set_index("tic")
+    assert df.loc[2, "decisao"] == "confirmado" and pd.isna(df.loc[2, "origem"])
+    assert df.loc[1, "origem"] == "auto"
+
+
+def test_fichas_usam_duvidas():
+    with tempfile.TemporaryDirectory() as d:
+        a = Path(d) / "a.csv"
+        a.write_text("tic,decisao\n1,confirmado\n2,duvida\n")
+        b = Path(d) / "b.csv"
+        b.write_text("tic,decisao\n1,confirmado\n")
+        assert dados.fichas_usam_duvidas(a) and not dados.fichas_usam_duvidas(b)
+        assert not dados.fichas_usam_duvidas(Path(d) / "nao_existe.csv")
+
+
+def test_vsx_online_fase5():
+    from unittest import mock
+    from src import cruzar_conhecidos as cc
+    achados = [
+        {"nome": "V1 Cyg", "periodo": "2.5:", "dist_arcsec": 4.0, "oid": "1"},
+        {"nome": "V2", "periodo": "", "dist_arcsec": 12.0, "oid": "2"},
+        {"nome": "V3", "periodo": "1.0", "dist_arcsec": 45.0, "oid": "3"},  # fora do raio
+    ]
+    m = cc.vsx_para_matches(achados)
+    assert [x["nome"] for x in m] == ["V1 Cyg", "V2"]
+    assert m[0]["catalogo"] == "VSX (online)" and m[0]["periodo"] == 2.5 and m[1]["periodo"] is None
+    assert classificar(m, 2.5)["status"] == "conhecido"
+    assert classificar(m, 2.5)["match_catalogo"] == "VSX (online)"
+    assert classificar(cc.vsx_para_matches([achados[2]]), 1.0)["status"] == "novo"
+
+    resp = _resp_vsx({"VSXObjects": {"VSXObject": {
+        "Name": "V1 Cyg", "RA2000": "10.0", "Declination2000": "20.001", "Period": "2.5",
+        "VariabilityType": "EA", "OID": "1"}}})
+    cc._vsx_falhas["seguidas"] = 0
+    with mock.patch("requests.get", return_value=resp):
+        r = cc._consultar_vsx_online(10.0, 20.0)
+    assert len(r) == 1 and r[0]["nome"] == "V1 Cyg" and r[0]["dist_arcsec"] < 5
+
+    # API fora do ar: segue sem ela, anota e desiste depois de 3 falhas seguidas
+    import requests
+    cc._vsx_falhas["seguidas"] = 0
+    with mock.patch("requests.get", side_effect=requests.ConnectionError), \
+            mock.patch("time.sleep"):
+        for _ in range(4):
+            assert cc._consultar_vsx_online(10.0, 20.0) == []
+    assert cc._vsx_falhas["seguidas"] == cc.VSX_FALHAS_MAX
+    cc._vsx_falhas["seguidas"] = 0
+
+
 def _ficha(**extra):
     f = {"tic": 1, "avisos": "", "periodo_d": 1.23456, "periodo_erro_d": 0.00002,
          "epoca_bjd": 2459000.1234, "amplitude_mag_tess": 0.25, "setores_usados": "55, 56",
@@ -698,6 +829,155 @@ def test_pendencias_vsx():
     assert ("atencao", "VSX online não conferido") in vsx.pendencias(_ficha(), "EA", None)
     assert "atencao" in niveis(vsx.pendencias(_ficha(alerta_periodo="x", suspeito_blend=True),
                                               "EA", []))
+
+
+def _setores_sintetico(deslocamentos, periodo=1.3, t0=0.4):
+    rng = np.random.default_rng(1)
+    curvas = []
+    for k, (inicio, extra) in enumerate(zip((0.0, 300.0, 700.0), deslocamentos)):
+        t = np.arange(inicio, inicio + 27, 0.01)
+        f = 1 - 0.01 * np.cos(2 * np.pi * (t - t0 - extra * periodo) / periodo)
+        curvas.append((t, f + rng.normal(0, 0.001, t.size)))
+    return curvas
+
+
+def test_oc_setores():
+    from src.periodo_setores import oc_setores
+    # alinhado: o O-C cai a zero e o periodo refinado fica perto do verdadeiro
+    oc = oc_setores(_setores_sintetico((0, 0, 0)), 1.3, False, [41, 55, 75])
+    assert oc["alinhado"] is True and oc["oc_max_fase"] < 0.02 and oc["setores"] == [41, 55, 75]
+    assert abs(oc["periodo_d"] - 1.3) < 1e-4 and np.isfinite(oc["periodo_erro_d"])
+    # desalinhado: um setor 0,3 em fase fora, sem periodo refinado
+    oc = oc_setores(_setores_sintetico((0, 0.3, 0)), 1.3, False, [41, 55, 75])
+    assert oc["alinhado"] is False and oc["oc_max_fase"] > 0.02
+    assert oc["periodo_d"] == 1.3 and np.isnan(oc["epoca"])
+    # dois setores: o desencontro dos dois decide
+    assert oc_setores(_setores_sintetico((0, 0, 0))[:2], 1.3, False)["alinhado"] is True
+    assert oc_setores(_setores_sintetico((0, 0.3, 0))[:2], 1.3, False)["alinhado"] is False
+    # binaria de minimos quase iguais: com a epoca, cada setor usa o minimo da fase certa
+    rng = np.random.default_rng(3)
+    eb = []
+    for inicio, fundo2 in ((0.0, 1.0), (300.0, 1.1), (700.0, 0.95)):
+        t = np.arange(inicio, inicio + 27, 0.01)
+        fase = ((t - 0.4) / 2.6) % 1
+        prim = np.exp(-0.5 * (((fase + 0.5) % 1 - 0.5) / 0.02) ** 2)
+        sec = np.exp(-0.5 * ((fase - 0.5) / 0.02) ** 2)
+        eb.append((t, 1 - 0.02 * prim - 0.02 * fundo2 * sec + rng.normal(0, 0.0005, t.size)))
+    sem_epoca = oc_setores(eb, 2.6, True)
+    assert sem_epoca["alinhado"] is False  # o minimo mais fundo muda de eclipse entre setores
+    com = oc_setores(eb, 2.6, True, epoca=0.4)
+    assert com["alinhado"] is True, com
+    # um setor so: nada a conferir
+    um = oc_setores(_setores_sintetico((0, 0, 0))[:1], 1.3, False)
+    assert um["alinhado"] is None and um["oc_fase"] == []
+
+
+def test_aplicar_oc():
+    from src import ficha_vsx as fv
+    ok = {"alinhado": True, "setores": [41, 55], "oc_fase": [0.001, -0.001], "oc_max_fase": 0.001,
+          "periodo_d": 1.30001, "periodo_erro_d": 2e-6, "epoca": 100.0}
+    f = fv.aplicar_oc({"periodo_d": 1.3, "alerta_periodo": "nao alinham"}, ok)
+    assert f["alerta_periodo"] == "" and f["periodo_d"] == 1.30001
+    assert f["epoca_bjd"] == 100.0 + fv.BTJD_PARA_BJD and f["periodo_erro_d"] == 2e-6
+    ruim = dict(ok, alinhado=False, oc_fase=[0.0, 0.26], oc_max_fase=0.26)
+    f = fv.aplicar_oc({"periodo_d": 1.3, "alerta_periodo": ""}, ruim)
+    assert "55 +0.260" in f["alerta_periodo"] and f["periodo_d"] == 1.3
+    f = fv.aplicar_oc({"periodo_d": 1.3, "alerta_periodo": "um so setor"},
+                      {"alinhado": None, "setores": [], "oc_fase": []})
+    assert f["alerta_periodo"] == "um so setor" and f["oc_fases"] == "um setor"
+
+
+def test_blend_veredito():
+    from src.ficha_vsx import veredito_blend
+    longe = [{"dist_arcsec": 40.0, "dmag": 1.5}]
+    # pico no alvo e vizinha a mais de 1 px: resolvido
+    v, m = veredito_blend(0.5, longe)
+    assert v == "ok" and "pico no alvo" in m and '40"' in m
+    assert veredito_blend(0.5, [])[0] == "ok"
+    # pico deslocado na distancia da vizinha (40" = 1,9 px): o sinal e dela
+    v, m = veredito_blend(1.8, longe)
+    assert v == "bloqueia" and "vizinha" in m
+    # pico deslocado que nao bate com a vizinha: indefinido
+    assert veredito_blend(4.5, longe)[0] == "atencao"
+    # vizinha a menos de 1 px (21"), ou sem deslocamento medido: atencao
+    assert veredito_blend(0.3, [{"dist_arcsec": 12.0, "dmag": 1.0}])[0] == "atencao"
+    assert veredito_blend(None, longe)[0] == "atencao"
+
+
+def test_vizinhas_suspeitas():
+    from astropy.coordinates import SkyCoord
+    from src.ficha_vsx import vizinhas_suspeitas
+    alvo = SkyCoord(10.0, 20.0, unit="deg")
+    tab = pd.DataFrame({"RA_ICRS": [10.0, 10.0, 10.0], "DE_ICRS": [20.0, 20.0 + 30 / 3600, 20.0 + 30 / 3600],
+                        "Gmag": [12.0, 13.0, 18.0]})
+    # a vizinha de dG=1 precisa de amplitude 0.01*(1+0.4)/0.4 = 0.035 < 0.5; a de dG=6 nao cabe no corte
+    viz = vizinhas_suspeitas(tab, alvo, 12.0, 0.01)
+    assert len(viz) == 1 and abs(viz[0]["dist_arcsec"] - 30) < 0.1 and viz[0]["dmag"] == 1.0
+    assert vizinhas_suspeitas(tab, alvo, 12.0, 0.9) == []
+
+
+def test_tipo_provavel():
+    from src.ficha_vsx import tipo_provavel as tp
+    assert tp(0.1, 7500, False, True)[0] == "DSCT"
+    assert tp(0.1, 6000, False, True)[0] is None  # Teff baixo demais para DSCT
+    assert tp(1.0, 12000, False, True)[0] == "SPB"
+    assert tp(1.0, 7200, False, True)[0] == "GDOR"
+    assert tp(1.2, 5000, False, True)[0] == "ROT"
+    assert tp(1.2, 5000, False, False)[0] is None  # curva nao e onda unica
+    t, m = tp(0.3, 5500, True, False)
+    assert t == "EW" and "iguais" in m
+    assert tp(0.3, 5500, False, False)[0] is None  # minimos diferentes
+    assert tp(0.45, 5500, True, True)[0] == "EW"  # EW vale e ROT nao (P < 0,5)
+    # conflito: DSCT e EW valem juntas
+    t, m = tp(0.2, 6700, True, True)
+    assert t is None and "conflito" in m
+    # sem Teff ou gigante: sem sugestao
+    assert tp(0.1, None, True, True)[0] is None and "Teff" in tp(0.1, None, True, True)[1]
+    assert tp(1.2, 5000, False, True, logg=2.0)[0] is None
+
+
+def test_razao_harmonicos():
+    from src.ficha_vsx import razao_harmonicos
+    t = np.arange(0, 20, 0.01)
+    onda = np.cos(2 * np.pi * t / 1.7)
+    assert razao_harmonicos(t, onda, 1.7) < 0.05
+    assert razao_harmonicos(t, onda + 0.8 * np.cos(4 * np.pi * t / 1.7), 1.7) > 0.7
+
+
+def test_pendencias_blend_oc_tipo():
+    from app import vsx
+
+    def niveis(p):
+        return dict((t, n) for n, t in p)
+
+    def tem(p, nivel, trecho):
+        return any(n == nivel and trecho in t for n, t in p)
+    # blend: os tres vereditos
+    assert tem(vsx.pendencias(_ficha(blend_veredito="ok", blend_motivo="pico no alvo"), "EA", []),
+               "ok", "Blend resolvido: pico no alvo")
+    assert tem(vsx.pendencias(_ficha(blend_veredito="bloqueia", blend_motivo="x", suspeito_blend=True),
+                              "EA", []), "bloqueia", "Blend: x")
+    assert tem(vsx.pendencias(_ficha(blend_veredito="atencao", blend_motivo="y"), "EA", []),
+               "atencao", "Blend: y")
+    # ficha antiga, sem as colunas novas: regra de antes
+    assert tem(vsx.pendencias(_ficha(suspeito_blend=True), "EA", []), "atencao", "Vizinha Gaia")
+    assert tem(vsx.pendencias(_ficha(), "EA", []), "ok", "Sem vizinha Gaia")
+    # periodo com O-C
+    assert tem(vsx.pendencias(_ficha(alerta_periodo="x", oc_fases="55 +0.2"), "EA", []),
+               "atencao", "55 +0.2")
+    assert tem(vsx.pendencias(_ficha(oc_fases="55 +0.0", oc_max_fase=0.004), "EA", []),
+               "ok", "0.004")
+    assert tem(vsx.pendencias(_ficha(), "EA", []), "ok", "Período consistente entre setores")
+    # tipo provavel: nao bloqueia mais, pede confirmacao; sem ele continua bloqueando
+    amb = _ficha(tipo_sugerido="ROT, EW ou pulsante")
+    prov = dict(amb, tipo_provavel="EW", motivo_provavel="minimos iguais")
+    p = vsx.pendencias(prov, None, [])
+    assert tem(p, "atencao", "Confirme o tipo provável EW (minimos iguais)") and not tem(p, "bloqueia", "tipo")
+    assert tem(vsx.pendencias(prov, "EW", [], confirmado=False), "atencao", "Confirme o tipo provável EW")
+    assert not tem(vsx.pendencias(prov, "EW", [], confirmado=True), "atencao", "Confirme")
+    assert not tem(vsx.pendencias(prov, "ROT", [], confirmado=False), "atencao", "Confirme")
+    assert tem(vsx.pendencias(amb, None, []), "bloqueia", "Escolha o tipo")
+    assert tem(vsx.pendencias(dict(amb, tipo_provavel=""), None, []), "bloqueia", "Escolha o tipo")
 
 
 def test_comentario_vsx():

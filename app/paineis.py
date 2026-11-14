@@ -216,9 +216,26 @@ def contagens_fichas(confirmadas: set[int]) -> tuple[int, int, int]:
     return len(dados.sem_ficha(confirmadas, csv)), len(confirmadas & bloqueiam), len(confirmadas & brandas)
 
 
+def refazer_se_cds_voltou(parciais: int) -> bool:
+    """Ficha so com o aviso brando da lista de catalogos + CDS de volta (teste com cache de
+    30 min) + nada rodando: inicia a geracao com a mesma selecao da ultima, uma vez por
+    sessao do Streamlit."""
+    if not parciais or st.session_state.get("vizier_refeito"):
+        return False
+    if execucao.rodando_ficha() or execucao.rodando() or not vizier_no_ar()[0]:
+        return False
+    st.session_state["vizier_refeito"] = parciais
+    execucao.iniciar_ficha(dados.fichas_usam_duvidas(VSX_DIR / "fichas.csv"))
+    return True
+
+
 def painel_ficha_pagina(confirmadas: set[int]):
     """Topo da pagina Fichas: gerar ou completar as fichas das confirmadas."""
     sem_ficha, incompletas, parciais = contagens_fichas(confirmadas)
+    refazer_se_cds_voltou(parciais)
+    if st.session_state.get("vizier_refeito") and execucao.rodando_ficha():
+        st.info(f"O VizieR do CDS voltou: refazendo a busca completa das "
+                f"{st.session_state['vizier_refeito']} fichas.")
     if parciais and not (sem_ficha or incompletas) and not execucao.rodando_ficha():
         st.caption(f"{parciais} ficha(s) prontas para submeter. A busca no VizieR foi feita nos "
                    "principais catálogos de variáveis, não em todos, porque o VizieR de "

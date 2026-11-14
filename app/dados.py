@@ -13,18 +13,38 @@ DECISOES = ("confirmado", "duvida", "descartado")
 
 # Tabela propria: candidatos_fase7 e refeita a cada execucao do pipeline
 # (to_sql replace) e apagaria as decisoes humanas.
+# origem: NULL ou 'humano' = decisao de quem revisa; 'auto' = descarte automatico (motivo_auto).
 _SCHEMA_REVISAO = """
 CREATE TABLE IF NOT EXISTS revisao_humana (
     tic INTEGER PRIMARY KEY,
     decisao TEXT NOT NULL,
     nota TEXT,
-    atualizado_em TEXT NOT NULL
+    atualizado_em TEXT NOT NULL,
+    origem TEXT,
+    motivo_auto TEXT
 )"""
+# Descartes automaticos que o humano mandou rever: nao voltam a ser descartados sozinhos.
+_SCHEMA_AUTO_REVISTO = "CREATE TABLE IF NOT EXISTS descarte_auto_revisto (tic INTEGER PRIMARY KEY)"
+
+# Descarte automatico: so evidencia direta ja calculada pela triagem, sem juizo de aparencia.
+# Pico do sinal a mais de FATOR_DESCARTE_PX vezes o limite do checklist (DESLOCAMENTO_MAX_PX)
+# do alvo: o sinal vem de outra estrela, nao ha curva em fase que conserte isso. Ou, mais
+# fraco mas com duas linhas do checklist em "problema" ao mesmo tempo: pico fora do limite
+# E o sinal nao se repete em outro setor.
+FATOR_DESCARTE_PX = 2.0
+
+
+def _garantir_revisao(conn: sqlite3.Connection) -> None:
+    conn.execute(_SCHEMA_REVISAO)
+    colunas = {r[1] for r in conn.execute("PRAGMA table_info(revisao_humana)")}
+    for col in ("origem", "motivo_auto"):
+        if col not in colunas:
+            conn.execute(f"ALTER TABLE revisao_humana ADD COLUMN {col} TEXT")
 
 
 def ler_revisoes(conn: sqlite3.Connection) -> pd.DataFrame:
-    conn.execute(_SCHEMA_REVISAO)
-    return pd.read_sql("SELECT tic, decisao, nota FROM revisao_humana", conn)
+    _garantir_revisao(conn)
+    return pd.read_sql("SELECT tic, decisao, nota, origem, motivo_auto FROM revisao_humana", conn)
 
 
 def carregar_candidatos(conn: sqlite3.Connection) -> pd.DataFrame:
@@ -35,18 +55,86 @@ def carregar_candidatos(conn: sqlite3.Connection) -> pd.DataFrame:
 
 
 def salvar_revisao(conn: sqlite3.Connection, tic: int, decisao: str, nota: str = "") -> None:
+    """Decisao humana: substitui qualquer decisao anterior, inclusive um descarte automatico."""
     if decisao not in DECISOES:
         raise ValueError(f"decisao invalida: {decisao!r} (use {DECISOES})")
-    conn.execute(_SCHEMA_REVISAO)
-    conn.execute("INSERT OR REPLACE INTO revisao_humana VALUES (?, ?, ?, ?)",
+    _garantir_revisao(conn)
+    conn.execute("INSERT OR REPLACE INTO revisao_humana "
+                 "(tic, decisao, nota, atualizado_em, origem, motivo_auto) "
+                 "VALUES (?, ?, ?, ?, NULL, NULL)",
                  (int(tic), decisao, nota, datetime.now().isoformat(timespec="seconds")))
     conn.commit()
 
 
 def apagar_revisao(conn: sqlite3.Connection, tic: int) -> None:
-    conn.execute(_SCHEMA_REVISAO)
+    """Limpa a decisao. Se era descarte automatico, ele nao volta sozinho."""
+    _garantir_revisao(conn)
+    conn.execute(_SCHEMA_AUTO_REVISTO)
+    conn.execute("INSERT OR IGNORE INTO descarte_auto_revisto SELECT tic FROM revisao_humana "
+                 "WHERE tic = ? AND origem = 'auto'", (int(tic),))
     conn.execute("DELETE FROM revisao_humana WHERE tic = ?", (int(tic),))
     conn.commit()
+
+
+def motivo_descarte_auto(r: dict) -> str | None:
+    """Motivo do descarte automatico da candidata, ou None se ela segue para o humano.
+
+    Regras (so evidencia direta, sem olhar a figura):
+    1. pico do sinal a mais de 2x DESLOCAMENTO_MAX_PX do alvo;
+    2. pico fora do limite E sinal que nao se repete em outros setores (persistente = 0).
+    Sem medida (NaN) nunca descarta.
+    """
+    d = r.get("deslocamento_px")
+    if d is None or pd.isna(d) or d <= DESLOCAMENTO_MAX_PX:
+        return None
+    if d > FATOR_DESCARTE_PX * DESLOCAMENTO_MAX_PX:
+        return (f"Pico do sinal a {d:.1f} px do alvo (mais de {FATOR_DESCARTE_PX:g}x o limite de "
+                f"{DESLOCAMENTO_MAX_PX:.1f} px): o sinal vem de outra estrela")
+    p = r.get("persistente")
+    if p is not None and not pd.isna(p) and not _sim(p):
+        return (f"Pico do sinal a {d:.1f} px do alvo (limite {DESLOCAMENTO_MAX_PX:.1f} px) e o "
+                "sinal não se repete em outros setores")
+    return None
+
+
+def descartar_automaticos(conn: sqlite3.Connection) -> list[int]:
+    """Descarta as candidatas pendentes que `motivo_descarte_auto` pega. Idempotente: nunca
+    toca em quem ja tem decisao (humana ou automatica) nem em descarte que o humano mandou
+    rever. Devolve os TICs descartados agora."""
+    conn.execute(_SCHEMA_AUTO_REVISTO)
+    _garantir_revisao(conn)
+    df = carregar_candidatos(conn)
+    revistos = {r[0] for r in conn.execute("SELECT tic FROM descarte_auto_revisto")}
+    novos = []
+    agora = datetime.now().isoformat(timespec="seconds")
+    for r in df[df["decisao"] == "pendente"].to_dict("records"):
+        tic = int(r["tic"])
+        motivo = motivo_descarte_auto(r)
+        if motivo and tic not in revistos:
+            cur = conn.execute("INSERT OR IGNORE INTO revisao_humana "
+                               "(tic, decisao, nota, atualizado_em, origem, motivo_auto) "
+                               "VALUES (?, 'descartado', '', ?, 'auto', ?)", (tic, agora, motivo))
+            if cur.rowcount:
+                novos.append(tic)
+    conn.commit()
+    return novos
+
+
+def ler_descartes_auto(conn: sqlite3.Connection) -> pd.DataFrame:
+    _garantir_revisao(conn)
+    return pd.read_sql("SELECT tic, motivo_auto FROM revisao_humana WHERE origem = 'auto' "
+                       "ORDER BY tic", conn)
+
+
+def rever_auto(conn: sqlite3.Connection, tic: int) -> bool:
+    """Limpa o descarte automatico da candidata (volta a pendente e nao e descartada de novo
+    sozinha). Decisao humana nunca e apagada aqui."""
+    _garantir_revisao(conn)
+    existe = conn.execute("SELECT 1 FROM revisao_humana WHERE tic = ? AND origem = 'auto'",
+                          (int(tic),)).fetchone()
+    if existe:
+        apagar_revisao(conn, tic)
+    return bool(existe)
 
 
 def _sim(v) -> bool:
@@ -371,6 +459,15 @@ def fichas_com_aviso(fichas_csv: Path, so_bloqueio: bool = True) -> set[int]:
         return any(MARCA_PODE_SUBMETER not in a for a in partes) if so_bloqueio else bool(partes)
 
     return set(df.loc[df["avisos"].map(conta), "tic"].astype(int))
+
+
+def fichas_usam_duvidas(fichas_csv: Path) -> bool:
+    """A ultima geracao incluiu estrelas marcadas como duvida (`--duvidas`)? Le a coluna
+    `decisao` do fichas.csv."""
+    try:
+        return bool((pd.read_csv(fichas_csv, dtype=str)["decisao"] == "duvida").any())
+    except Exception:
+        return False
 
 
 def com_ficha(fichas_csv: Path) -> set[int]:

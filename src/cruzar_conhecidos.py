@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ from config import (CATALOGOS_GAIA, CATALOGOS_VIZIER, HTTP_TIMEOUT_S, PERIODO_MA
                     WANG_DIR, WANG_URLS)
 from src.periodo import comparar_periodo
 from src.util import retry
+from src.vsx_api import consultar_vsx
 
 COLUNAS_NOME = ["Name", "ASASSN-V", "ID", "TIC", "Source"]
 
@@ -56,6 +58,41 @@ def classificar(matches: list[dict], periodo_d: float) -> dict:
     return {**saida, "status": status, "match_catalogo": m["catalogo"], "match_nome": m["nome"],
             "match_dist_arcsec": m["dist_arcsec"], "periodo_catalogo": m["periodo"],
             "razao_periodo": m["razao"]}
+
+
+def vsx_para_matches(achados: list[dict], raio_arcsec: float = RAIO_MATCH_ARCSEC) -> list[dict]:
+    """Achados da API do VSX no formato de `classificar`, no mesmo raio dos catalogos do VizieR.
+    O periodo do VSX pode vir com sufixo (`2.5:`); o que nao der numero vira None."""
+    matches = []
+    for a in achados:
+        if a["dist_arcsec"] > raio_arcsec:
+            continue
+        m = re.search(r"\d+(?:\.\d+)?", str(a.get("periodo") or ""))
+        periodo = float(m.group()) if m else None
+        matches.append({"catalogo": "VSX (online)", "nome": str(a.get("nome") or a.get("oid")),
+                        "dist_arcsec": float(a["dist_arcsec"]),
+                        "periodo": periodo if periodo else None, "gaia": False, "classe": None})
+    return matches
+
+
+# Depois de 3 estrelas seguidas sem resposta, a rodada segue sem o VSX online (o VizieR cobre o B/vsx)
+_vsx_falhas = {"seguidas": 0}
+VSX_FALHAS_MAX = 3
+
+
+def _consultar_vsx_online(ra: float, dec: float) -> list[dict]:
+    if _vsx_falhas["seguidas"] >= VSX_FALHAS_MAX:
+        return []
+    try:
+        achados = retry(lambda: consultar_vsx(ra, dec, RAIO_MATCH_ARCSEC), "VSX online",
+                        retries=2, delay=3.0)
+    except Exception as e:
+        _vsx_falhas["seguidas"] += 1
+        aviso = " (desisti do VSX online nesta rodada)" if _vsx_falhas["seguidas"] >= VSX_FALHAS_MAX else ""
+        print(f"  VSX online sem resposta ({type(e).__name__}); seguindo sem ele{aviso}", flush=True)
+        return []
+    _vsx_falhas["seguidas"] = 0
+    return vsx_para_matches(achados)
 
 
 def _toi() -> pd.DataFrame:
@@ -128,7 +165,8 @@ def _consultar(tic: int, ra: float, dec: float, toi: pd.DataFrame,
                wang: pd.DataFrame) -> list[dict]:
     alvo = SkyCoord(ra, dec, unit="deg")
     raio = RAIO_MATCH_ARCSEC * u.arcsec
-    matches = _consultar_vizier(alvo, RAIO_MATCH_ARCSEC) + _consultar_wang(alvo, wang)
+    matches = (_consultar_vizier(alvo, RAIO_MATCH_ARCSEC) + _consultar_wang(alvo, wang)
+               + _consultar_vsx_online(ra, dec))
 
     simbad = Simbad()
     simbad.add_votable_fields("otype")

@@ -1,13 +1,7 @@
-"""Consulta ao VSX, pendencias e comentario da submissao: sem Streamlit, testavel offline."""
-
-import math
-
-import requests
+"""Pendencias e comentario da submissao: sem Streamlit, testavel offline."""
 
 from config import MARCA_PODE_SUBMETER
-
-URL_API = "https://vsx.aavso.org/index.php"
-URL_DETALHE = "https://vsx.aavso.org/index.php?view=detail.top&oid={oid}"
+from src.vsx_api import URL_API, URL_DETALHE, _distancia_arcsec, consultar_vsx  # noqa: F401
 
 TIPOS_VSX = {
     "EA": "binária eclipsante, mínimos bem separados (tipo Algol)",
@@ -26,36 +20,28 @@ TIPOS_VSX = {
 }
 
 
-def _distancia_arcsec(ra1: float, dec1: float, ra2: float, dec2: float) -> float:
-    r1, d1, r2, d2 = map(math.radians, (ra1, dec1, ra2, dec2))
-    c = math.sin(d1) * math.sin(d2) + math.cos(d1) * math.cos(d2) * math.cos(r1 - r2)
-    return math.degrees(math.acos(max(-1.0, min(1.0, c)))) * 3600
+RAIO_ACEITE_ARCSEC = 10
 
 
-def consultar_vsx(ra: float, dec: float, raio_arcsec: float = 60) -> list[dict]:
-    """Variaveis do VSX no raio, da mais proxima para a mais longe. Erro de rede levanta."""
-    r = requests.get(URL_API, params=dict(view="api.list", ra=ra, dec=dec,
-                                          radius=raio_arcsec / 3600, format="json"), timeout=30)
-    r.raise_for_status()
-    objetos = r.json().get("VSXObjects") or {}
-    itens = objetos.get("VSXObject", []) if isinstance(objetos, dict) else objetos
-    if isinstance(itens, dict):
-        itens = [itens]
-    achados = []
-    for o in itens:
-        achados.append({
-            "nome": o.get("Name", ""), "tipo": o.get("VariabilityType", ""),
-            "periodo": o.get("Period", "") or "", "max": o.get("MaxMag", ""),
-            "min": o.get("MinMag", ""), "oid": o.get("OID", ""),
-            "dist_arcsec": _distancia_arcsec(ra, dec, float(o["RA2000"]),
-                                             float(o["Declination2000"])),
-            "url": URL_DETALHE.format(oid=o.get("OID", "")),
-        })
-    return sorted(achados, key=lambda a: a["dist_arcsec"])
+def aceite_detectado(achados: list[dict] | None, raio: float = RAIO_ACEITE_ARCSEC) -> str | None:
+    """Nome no VSX do objeto a ate `raio` arcsec da posicao Gaia da ficha, ou None.
+
+    Vale so para estrela ja enviada: antes do envio a ficha bloqueia se houver variavel do VSX
+    a 30" ou menos, entao um objeto a 10" que aparece depois do envio e a propria estrela.
+    """
+    if not achados:
+        return None
+    perto = [a for a in achados if a["dist_arcsec"] <= raio]
+    if not perto:
+        return None
+    mais_perto = min(perto, key=lambda a: a["dist_arcsec"])
+    return mais_perto.get("nome") or f"OID {mais_perto.get('oid')}"
 
 
-def pendencias(f: dict, tipo_final: str | None, vsx: list[dict] | None) -> list[tuple[str, str]]:
-    """(nivel, texto) com nivel em ok, atencao ou bloqueia."""
+def pendencias(f: dict, tipo_final: str | None, vsx: list[dict] | None,
+               confirmado: bool = True) -> list[tuple[str, str]]:
+    """(nivel, texto) com nivel em ok, atencao ou bloqueia. `confirmado`: o `tipo_final` foi
+    escolhido por quem revisa (salvo), nao so pre-selecionado com o tipo provavel da ficha."""
     itens = []
     for parte in str(f.get("avisos") or "").split(" | "):
         if not parte.strip():
@@ -67,18 +53,37 @@ def pendencias(f: dict, tipo_final: str | None, vsx: list[dict] | None) -> list[
 
     if f.get("alerta_periodo"):
         itens.append(("atencao", "Períodos dos setores não alinham: confira na curva em fase "
-                                 "se os eclipses dos setores caem no mesmo lugar"))
+                                 "se os eclipses dos setores caem no mesmo lugar"
+                                 + (f" (O-C em fase: {f['oc_fases']})" if f.get("oc_fases") else "")))
+    elif f.get("oc_max_fase") == f.get("oc_max_fase") and f.get("oc_max_fase") is not None \
+            and f.get("oc_fases") != "um setor":
+        itens.append(("ok", f"Período consistente entre setores (O-C máximo {f['oc_max_fase']:.3f} "
+                            "em fase)"))
     else:
         itens.append(("ok", "Período consistente entre setores"))
-    if f.get("suspeito_blend"):
+
+    veredito = f.get("blend_veredito")
+    motivo = f.get("blend_motivo") or ""
+    if veredito == "ok":
+        itens.append(("ok", f"Blend resolvido: {motivo}"))
+    elif veredito == "bloqueia":
+        itens.append(("bloqueia", f"Blend: {motivo}"))
+    elif veredito == "atencao":
+        itens.append(("atencao", f"Blend: {motivo}"))
+    elif f.get("suspeito_blend"):
         itens.append(("atencao", "Vizinha Gaia brilhante perto: confira no mapa por pixel "
                                  "(figura da triagem) se o pico está no alvo e mencione a "
                                  "vizinha no comentário"))
     else:
         itens.append(("ok", "Sem vizinha Gaia brilhante suspeita"))
 
-    if not tipo_final and "," in str(f.get("tipo_sugerido") or ""):
-        itens.append(("bloqueia", "Escolha o tipo pela forma da curva"))
+    if "," in str(f.get("tipo_sugerido") or ""):
+        provavel = f.get("tipo_provavel")
+        if provavel and (not tipo_final or (tipo_final == provavel and not confirmado)):
+            itens.append(("atencao", f"Confirme o tipo provável {provavel} "
+                                     f"({f.get('motivo_provavel') or 'ver Detalhes'})"))
+        elif not tipo_final:
+            itens.append(("bloqueia", "Escolha o tipo pela forma da curva"))
 
     if vsx is None:
         itens.append(("atencao", "VSX online não conferido"))
@@ -117,6 +122,6 @@ def comentario(f: dict, tipo_final: str | None, vsx: list[dict] | None) -> str:
         frases.append("No variable-star catalog in VizieR has an entry within 30\".")
     if "gaia_dr3" in f:
         frases.append(f"Gaia DR3 {f['gaia_dr3']}.")
-    if f.get("suspeito_blend"):
+    if f.get("suspeito_blend") and f.get("blend_veredito") in (None, "ok"):
         frases.append('A brighter Gaia neighbour lies within 42"; the pixel map peaks on the target.')
     return " ".join(frases)

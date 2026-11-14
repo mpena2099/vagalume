@@ -142,9 +142,41 @@ try:
 except Exception as e:
     st.error(f"Não consegui ler os envios em {SQLITE_PATH}: {e}")
     envios = pd.DataFrame(columns=["tic", "enviada_em", "aceita_em", "nome_vsx", "tipo_final"])
-por_tic = envios.set_index("tic").to_dict("index") if not envios.empty else {}
 tics = sorted(fichas)
 st.session_state["ficha_tics"] = tics
+
+
+def detectar_aceites(envios: pd.DataFrame) -> list[tuple[int, str]]:
+    """Estrelas enviadas e ainda nao aceitas que ja aparecem no VSX a ate 10": marca o aceite
+    e guarda o nome. So essas estrelas sao consultadas (cache de 1 h por coordenada)."""
+    if envios.empty:
+        return []
+    esperando = envios[envios["enviada_em"].notna() & envios["aceita_em"].isna()]
+    novos = []
+    for t in esperando["tic"].astype(int):
+        f = fichas.get(t)
+        if not f or "gaia_ra" not in f or "gaia_dec" not in f:
+            continue
+        try:
+            nome = vsx.aceite_detectado(consultar(f["gaia_ra"], f["gaia_dec"]))
+        except Exception:
+            continue  # VSX fora do ar: tenta de novo na proxima abertura
+        if nome:
+            with conectar() as conn:
+                dados.marcar_envio(conn, t, aceita=True, nome_vsx=nome)
+            st.session_state[f"ace_{t}"], st.session_state[f"nome_{t}"] = True, nome
+            novos.append((t, nome))
+    return novos
+
+
+_aceites = detectar_aceites(envios)
+for _t, _nome in _aceites:
+    st.toast(f"TIC {_t} aceita no VSX como {_nome}", icon=":material/check_circle:")
+    st.success(f"TIC {_t} aceita no VSX como {_nome}.")
+if _aceites:
+    with conectar() as conn:
+        envios = dados.ler_envios(conn)
+por_tic = envios.set_index("tic").to_dict("index") if not envios.empty else {}
 
 
 def vsx_da_ficha(f: dict) -> tuple[list[dict] | None, bool]:
@@ -165,12 +197,23 @@ def anexo(rotulo: str, caminho_img: Path, nome: str, chave: str):
         st.caption(f"{rotulo}: arquivo não encontrado ({caminho_img.name}).")
 
 
-def tipo_inicial(tic: int) -> str | None:
-    """Tipo salvo ou, sem ele, a sugestao da ficha quando e um tipo unico do VSX."""
-    sugerido = str(fichas[tic].get("tipo_sugerido") or "").strip()
+def tipo_salvo(tic: int) -> str | None:
     salvo = por_tic.get(tic, {}).get("tipo_final")
-    return (salvo if pd.notna(salvo) and salvo else None) or (
-        sugerido if sugerido in vsx.TIPOS_VSX else None)
+    return salvo if pd.notna(salvo) and salvo else None
+
+
+def tipo_inicial(tic: int) -> str | None:
+    """Tipo salvo ou, sem ele, a sugestao da ficha quando e um tipo unico do VSX ou o tipo
+    provavel (que ainda pede confirmacao)."""
+    sugerido = str(fichas[tic].get("tipo_sugerido") or "").strip()
+    provavel = str(fichas[tic].get("tipo_provavel") or "").strip()
+    return tipo_salvo(tic) or (sugerido if sugerido in vsx.TIPOS_VSX else None) or (
+        provavel if provavel in vsx.TIPOS_VSX else None)
+
+
+def pendencias_de(tic: int, achados) -> list[tuple[str, str]]:
+    atual = tipo_de(tic)
+    return vsx.pendencias(fichas[tic], atual, achados, confirmado=atual == tipo_salvo(tic))
 
 
 def tipo_de(tic: int) -> str | None:
@@ -180,14 +223,18 @@ def tipo_de(tic: int) -> str | None:
 def o_que_falta(tic: int) -> str:
     """Resumo curto das pendencias locais, para a tabela."""
     curtos = []
-    for nivel, texto in vsx.pendencias(fichas[tic], tipo_de(tic), []):
+    for nivel, texto in pendencias_de(tic, []):
         if nivel == "ok":
             continue
         if texto.startswith("Escolha o tipo"):
             curtos.append("Escolher o tipo")
+        elif texto.startswith("Confirme o tipo"):
+            curtos.append("Confirmar o tipo provável")
         elif texto.startswith("Períodos"):
             curtos.append("Conferir período")
-        elif texto.startswith("Vizinha"):
+        elif texto.startswith("Blend: sinal parece"):
+            curtos.append("Blend: sinal da vizinha")
+        elif texto.startswith(("Vizinha", "Blend")):
             curtos.append("Conferir vizinha (blend)")
         elif nivel == "bloqueia":
             curtos.append("Aviso da ficha")
@@ -201,7 +248,7 @@ def situacao_local(tic: int) -> str:
         return "aceita"
     if pd.notna(e.get("enviada_em")) and e.get("enviada_em"):
         return "enviada"
-    pend = vsx.pendencias(fichas[tic], tipo_de(tic), [])
+    pend = pendencias_de(tic, [])
     return "falta resolver" if any(n == "bloqueia" for n, _ in pend) else "pronta"
 
 
@@ -279,7 +326,7 @@ f = fichas[tic]
 e = por_tic.get(tic, {})
 st.session_state.setdefault(f"tipo_{tic}", tipo_inicial(tic))
 achados, falhou = vsx_da_ficha(f)
-pend = vsx.pendencias(f, st.session_state.get(f"tipo_{tic}"), achados)
+pend = pendencias_de(tic, achados)
 if falhou:
     pend.append(("atencao", "VSX não respondeu agora"))
 abertas = [(n, t) for n, t in pend if n != "ok"]
@@ -320,10 +367,27 @@ with aba_conferir:
                  placeholder="Escolha pela forma da curva",
                  format_func=lambda t: f"{t}: {vsx.TIPOS_VSX[t]}",
                  on_change=salvar_tipo, args=(tic,))
+    provavel = f.get("tipo_provavel")
+    if provavel and st.session_state.get(f"tipo_{tic}") == provavel and tipo_salvo(tic) != provavel:
+        st.button(f"Confirmar o tipo provável {provavel}", key=f"conf_tipo_{tic}",
+                  on_click=salvar_tipo, args=(tic,), help=f.get("motivo_provavel"))
     with st.expander("Detalhes"):
         if f.get("motivo_tipo"):
             st.markdown("**Motivo do tipo**")
             st.write(f["motivo_tipo"])
+        if f.get("motivo_provavel"):
+            st.markdown("**Tipo provável**")
+            st.write((f"{provavel}: " if provavel else "") + f["motivo_provavel"]
+                     + (f" (Teff {f['gaia_teff']:.0f} K"
+                        + (f", logg {f['gaia_logg']:.1f}" if "gaia_logg" in f else "")
+                        + (f", raio {f['gaia_raio']:.2f} R☉" if "gaia_raio" in f else "") + ")"
+                        if "gaia_teff" in f else ""))
+        if f.get("oc_fases"):
+            st.markdown("**O-C do mínimo por setor (em fase)**")
+            st.write(f["oc_fases"] + (f"; máximo {f['oc_max_fase']:.3f}, limite 0,02"
+                                      if "oc_max_fase" in f else ""))
+        if f.get("alerta_periodo"):
+            st.write(f["alerta_periodo"])
         st.markdown("**Achados no VSX**")
         if achados:
             for a in achados:
@@ -344,8 +408,11 @@ with aba_conferir:
             st.write(f["avisos"])
         if "suspeito_blend" in f:
             st.markdown("**Blend**")
-            st.write("Suspeito: vizinha Gaia brilhante perto." if f["suspeito_blend"]
-                     else "Sem vizinha Gaia brilhante suspeita.")
+            if f.get("blend_motivo"):
+                st.write(f"{f['blend_veredito'].capitalize()}: {f['blend_motivo']}")
+            else:
+                st.write("Suspeito: vizinha Gaia brilhante perto." if f["suspeito_blend"]
+                         else "Sem vizinha Gaia brilhante suspeita.")
         if f.get("vizier_variaveis"):
             st.markdown('**VizieR a 30"**')
             st.write(f["vizier_variaveis"])

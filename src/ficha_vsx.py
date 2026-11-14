@@ -38,11 +38,13 @@ from astropy.coordinates import SkyCoord
 from astroquery.vizier import Vizier
 
 from app.dados import carregar_candidatos
-from config import (BLS_FLATTEN_D, CATALOGOS_VARIAVEIS_ESPELHO, LS_FLATTEN_D, MARCA_PODE_SUBMETER,
-                    SQLITE_PATH, VSX_DIR)
+from config import (BLEND_AMP_MAX, BLS_FLATTEN_D, CATALOGOS_VARIAVEIS_ESPELHO, LS_FLATTEN_D,
+                    MARCA_PODE_SUBMETER, RAIO_VIZINHA_GAIA_ARCSEC, SQLITE_PATH, VIZINHA_DMAG_MAX,
+                    VSX_DIR)
 from src.curvas import baixar_curva
 from src.detectar_sinal import _arrays, _flatten
-from src.periodo_setores import medir_periodo_setores
+from src.checar_contaminacao import amp_necessaria
+from src.periodo_setores import medir_periodo_setores, oc_setores
 from src import util
 from src.util import retry
 
@@ -102,6 +104,18 @@ def fracao_variando(tempo: np.ndarray, fluxo: np.ndarray, periodo: float,
     return float(np.nanmean(topo - med > 0.1 * (topo - np.nanmin(med))))
 
 
+def profundidades_minimos(tempo: np.ndarray, fluxo: np.ndarray, periodo2: float,
+                          n_bins: int = 40) -> tuple[float, float, float]:
+    """Curva dobrada em `periodo2` (2P): profundidade do minimo mais fundo, do minimo perto da
+    fase oposta e o erro da diferenca entre os dois."""
+    med, erro = curva_binada(tempo, fluxo, periodo2, n_bins)
+    base = np.nanmedian(med)
+    k1 = int(np.nanargmin(med))
+    perto = [(k1 + n_bins // 2 + d) % n_bins for d in range(-n_bins // 10, n_bins // 10 + 1)]
+    k2 = perto[int(np.nanargmin(med[perto]))]
+    return float(base - med[k1]), float(base - med[k2]), float(np.hypot(erro[k1], erro[k2]))
+
+
 def sugerir(metodo: str, periodo: float, tempo: np.ndarray, fluxo: np.ndarray,
             n_bins: int = 40) -> tuple[float, str, str]:
     """(periodo, tipo VSX sugerido, motivo). Binaria no LS costuma sair com metade do periodo."""
@@ -110,14 +124,8 @@ def sugerir(metodo: str, periodo: float, tempo: np.ndarray, fluxo: np.ndarray,
     if fracao_variando(tempo, fluxo, 2 * periodo) < 0.3:
         return (2 * periodo, "EA",
                 "dobrada em 2P, dois eclipses estreitos e brilho plano entre eles: o periodo real e 2P")
-    med, erro = curva_binada(tempo, fluxo, 2 * periodo, n_bins)
-    base = np.nanmedian(med)
-    k1 = int(np.nanargmin(med))
-    perto = [(k1 + n_bins // 2 + d) % n_bins for d in range(-n_bins // 10, n_bins // 10 + 1)]
-    k2 = perto[int(np.nanargmin(med[perto]))]
-    p1, p2 = base - med[k1], base - med[k2]
+    p1, p2, sigma = profundidades_minimos(tempo, fluxo, 2 * periodo, n_bins)
     diferenca = abs(p1 - p2)
-    sigma = np.hypot(erro[k1], erro[k2])
     if diferenca > 3 * sigma and diferenca > 0.15 * p1:
         return (2 * periodo, "EB",
                 f"dobrada em 2P, os minimos diferem ({p1:.4f} x {p2:.4f}) e o brilho varia o tempo "
@@ -139,6 +147,120 @@ def eh_catalogo_variavel(descricao: str) -> bool:
     d = descricao.lower()
     # "Variability Upper Limits for Non-Variable Sources" casa com "variab" e diz o contrario
     return "non-variable" not in d and any(p in d for p in PALAVRAS_VARIAVEL)
+
+PIXEL_ARCSEC = 21.0
+BLEND_TOL_PX = 1.0
+BLEND_SEM_CONSULTA = "vizinhas Gaia não consultadas"
+
+
+def veredito_blend(desloc_px: float | None, suspeitas: list[dict]) -> tuple[str, str]:
+    """('ok' | 'atencao' | 'bloqueia', motivo) para o blend. `desloc_px` e a distancia do pico do
+    mapa por pixel ao alvo (triagem); `suspeitas`, as vizinhas Gaia que poderiam gerar o sinal
+    (dicts com `dist_arcsec` e `dmag`). So ha distancias, sem direcao: o pico "compativel" com
+    uma vizinha e o que fica a distancia dela do alvo, com folga de 1 px. Vizinha a menos de 1 px
+    nao se separa do alvo no pixel do TESS."""
+    if not suspeitas:
+        return "ok", "sem vizinha Gaia que explique o sinal"
+    perto = min(suspeitas, key=lambda v: v["dist_arcsec"])
+    if perto["dist_arcsec"] < PIXEL_ARCSEC:
+        return ("atencao", f"vizinha Gaia a {perto['dist_arcsec']:.0f}\" (menos de 1 px) do alvo, "
+                           f"G {perto['dmag']:+.1f} mag: o pixel não separa os dois")
+    if desloc_px is None or not np.isfinite(desloc_px):
+        return "atencao", "sem o deslocamento do pico no mapa por pixel para comparar com a vizinha"
+    if desloc_px < BLEND_TOL_PX:
+        return ("ok", f"pico no alvo ({desloc_px:.1f} px); vizinha a "
+                      f"{perto['dist_arcsec']:.0f}\" não explica o sinal")
+    compativeis = [v for v in suspeitas
+                   if abs(v["dist_arcsec"] / PIXEL_ARCSEC - desloc_px) <= BLEND_TOL_PX]
+    if compativeis:
+        v = min(compativeis, key=lambda v: abs(v["dist_arcsec"] / PIXEL_ARCSEC - desloc_px))
+        return ("bloqueia", f"sinal parece da vizinha: pico a {desloc_px:.1f} px do alvo, vizinha "
+                            f"Gaia a {v['dist_arcsec']:.0f}\" ({v['dist_arcsec'] / PIXEL_ARCSEC:.1f} px), "
+                            f"G {v['dmag']:+.1f} mag")
+    return ("atencao", f"pico a {desloc_px:.1f} px do alvo não bate com nenhuma vizinha suspeita "
+                       f"(a mais próxima está a {perto['dist_arcsec']:.0f}\"): confira o mapa")
+
+
+def vizinhas_suspeitas(tabela: pd.DataFrame, alvo: SkyCoord, g_alvo: float,
+                       amplitude: float) -> list[dict]:
+    """Vizinhas Gaia (colunas RA_ICRS, DE_ICRS, Gmag) que pelo criterio da Fase 6 poderiam gerar
+    o sinal: mais fracas ate VIZINHA_DMAG_MAX e com amplitude intrinseca necessaria abaixo de
+    BLEND_AMP_MAX."""
+    if tabela.empty:
+        return []
+    t = tabela.dropna(subset=["Gmag"]).copy()
+    t["dist"] = alvo.separation(SkyCoord(t["RA_ICRS"].to_numpy(), t["DE_ICRS"].to_numpy(),
+                                         unit="deg")).arcsec
+    t = t[(t["dist"] > 1) & (t["Gmag"] < g_alvo + VIZINHA_DMAG_MAX) & (t["Gmag"] != g_alvo)]
+    achadas = []
+    for _, v in t.iterrows():
+        dmag = float(v["Gmag"] - g_alvo)
+        if amp_necessaria(amplitude, dmag) < BLEND_AMP_MAX:
+            achadas.append({"dist_arcsec": float(v["dist"]), "dmag": dmag})
+    return achadas
+
+
+def razao_harmonicos(tempo: np.ndarray, fluxo: np.ndarray, periodo: float) -> float:
+    """Amplitude do 2o harmonico sobre a do 1o, ajustados em `periodo`. Perto de 0: onda unica."""
+    x = 2 * np.pi * (tempo - tempo.mean()) / periodo
+    a = np.column_stack([np.ones_like(x), np.cos(x), np.sin(x), np.cos(2 * x), np.sin(2 * x)])
+    c, *_ = np.linalg.lstsq(a, fluxo, rcond=None)
+    return float(np.hypot(c[3], c[4]) / max(np.hypot(c[1], c[2]), 1e-12))
+
+
+def tipo_provavel(periodo_d: float, teff: float | None, minimos_iguais: bool,
+                  onda_unica: bool, logg: float | None = None) -> tuple[str | None, str]:
+    """(tipo, motivo). Sugere so com evidencia direta: cada regra exige periodo, Teff do Gaia DR3
+    e (EW, ROT) a forma da curva. Duas regras que valem juntas, Teff ou logg ausente ou nenhuma
+    regra: sem sugestao. `periodo_d` e o da ficha (o do LS para o tipo ambiguo, 2P = 2x ele)."""
+    if teff is None or not np.isfinite(teff):
+        return None, "sem sugestão: o Gaia DR3 não tem Teff desta estrela"
+    if logg is not None and np.isfinite(logg) and logg < 3.0:
+        return None, f"sem sugestão: logg {logg:.1f} (gigante), as regras são para anãs"
+    p, dp = periodo_d, 2 * periodo_d
+    regras = []
+    if p < 0.25 and teff > 6500:
+        regras.append(("DSCT", f"P {p:.3f} d < 0,25 d e Teff {teff:.0f} K > 6500 K"))
+    if teff > 10000 and 0.3 <= p <= 3:
+        regras.append(("SPB", f"Teff {teff:.0f} K > 10000 K e P {p:.2f} d entre 0,3 e 3 d"))
+    if 6800 <= teff <= 7800 and 0.3 <= p <= 3:
+        regras.append(("GDOR", f"Teff {teff:.0f} K entre 6800 e 7800 K e P {p:.2f} d entre 0,3 e 3 d"))
+    if teff < 6000 and onda_unica and p > 0.5:
+        regras.append(("ROT", f"Teff {teff:.0f} K < 6000 K, onda única e P {p:.2f} d > 0,5 d"))
+    if minimos_iguais and 0.2 <= dp <= 1 and 4000 <= teff <= 7000:
+        regras.append(("EW", f"dobrada em 2P ({dp:.3f} d) os dois mínimos são iguais, a curva é "
+                             f"contínua e Teff {teff:.0f} K"))
+    if len(regras) == 1:
+        return regras[0]
+    if not regras:
+        return None, f"sem sugestão: Teff {teff:.0f} K e P {p:.3f} d não bastam para escolher"
+    return None, ("sem sugestão: evidências em conflito (" + " x ".join(r[0] for r in regras) + ")")
+
+
+def formatar_oc(rotulos, oc_fase) -> str:
+    return ", ".join(f"{r} {o:+.3f}" for r, o in zip(rotulos, oc_fase))
+
+
+def aplicar_oc(ficha: dict, oc: dict) -> dict:
+    """Passa o resultado de `oc_setores` para a ficha: com os setores alinhados o alerta some e
+    periodo, erro e epoca sao os do ajuste; senao o alerta ganha o O-C de cada setor. Devolve o
+    dict `ficha` alterado."""
+    texto = formatar_oc(oc["setores"], oc["oc_fase"])
+    if oc["alinhado"] is None:
+        ficha["oc_fases"] = "um setor"
+        ficha["oc_max_fase"] = np.nan
+        return ficha
+    ficha["oc_fases"] = texto
+    ficha["oc_max_fase"] = oc["oc_max_fase"]
+    if oc["alinhado"]:
+        ficha["alerta_periodo"] = ""
+        ficha["periodo_d"] = oc["periodo_d"]
+        ficha["periodo_erro_d"] = oc["periodo_erro_d"]
+        ficha["epoca_bjd"] = oc["epoca"] + BTJD_PARA_BJD
+    else:
+        ficha["alerta_periodo"] = ("periodos dos setores nao alinham (O-C em fase por setor: "
+                                   f"{texto}): conferir a figura")
+    return ficha
 
 
 def _gaia(alvo: SkyCoord) -> dict:
@@ -256,7 +378,7 @@ def _medir(s) -> dict:
     print("  gerando a curva em fase", flush=True)
     figura = VSX_DIR / f"{s.tic}_fase.png"
     _figura(int(s.tic), tempo, fluxo, periodo, epoca, figura)
-    return {"tic": int(s.tic), "decisao": s.decisao, "periodo_d": periodo,
+    ficha = {"tic": int(s.tic), "decisao": s.decisao, "periodo_d": periodo,
             "periodo_erro_d": medido["periodo_erro_d"],
             "alerta_periodo": medido["alerta_periodo"],
             "fase_secundario": medido["fase_secundario"],
@@ -266,6 +388,28 @@ def _medir(s) -> dict:
             "setores_usados": ",".join(str(setor) for setor, _ in brutas),
             "suspeito_blend": bool(s.suspeito_blend), "figura_fase": str(figura),
             "figura_triagem": s.figura}
+    _buscar_oc(ficha, s, brutas)
+    return ficha
+
+
+def _buscar_oc(ficha: dict, s, brutas=None) -> None:
+    """O-C do minimo por setor com o periodo que a ficha ja escolheu (so curvas em cache)."""
+    brutas = brutas or _carregar_setores(s)
+    eclipse = s.metodo == "bls" or ficha["tipo_sugerido"] in ("EA", "EB")
+    janela = BLS_FLATTEN_D if eclipse else LS_FLATTEN_D
+    curvas = [_arrays(_flatten(lc, janela)) for _, lc in brutas]
+    oc = oc_setores(curvas, ficha["periodo_d"], eclipse, [setor for setor, _ in brutas],
+                    epoca=ficha["epoca_bjd"] - BTJD_PARA_BJD)
+    aplicar_oc(ficha, oc)
+    print(f"  O-C por setor (fase): {ficha['oc_fases']}"
+          + ("" if oc["alinhado"] is None else
+             f"; máximo {oc['oc_max_fase']:.3f}, " + ("alinhado" if oc["alinhado"] else "NÃO alinha")),
+          flush=True)
+    if oc["alinhado"]:
+        tempo, fluxo = _juntar(curvas)
+        ficha["amplitude_mag_tess"] = amplitude_dobrada_mag(tempo, fluxo, ficha["periodo_d"])
+        _figura(int(s.tic), tempo, fluxo, ficha["periodo_d"], ficha["epoca_bjd"] - BTJD_PARA_BJD,
+                Path(ficha["figura_fase"]))
 
 
 def _buscar_gaia(ficha: dict, s) -> str | None:
@@ -311,7 +455,111 @@ def _buscar_vizier(ficha: dict, s) -> str | None:
     return aviso
 
 
-BUSCAS = {"gaia": _buscar_gaia, "vizier": _buscar_vizier}
+def _vizinhas_gaia_tabela(alvo: SkyCoord) -> pd.DataFrame:
+    res = retry(lambda: Vizier(columns=["Source", "RA_ICRS", "DE_ICRS", "Gmag"], row_limit=-1,
+                               timeout=CONSULTA_TIMEOUT_S)
+                .query_region(alvo, radius=RAIO_VIZINHA_GAIA_ARCSEC * u.arcsec,
+                              catalog="I/355/gaiadr3"), "VizieR", retries=CONSULTA_TENTATIVAS)
+    return res[0].to_pandas() if len(res) else pd.DataFrame()
+
+
+def _buscar_blend(ficha: dict, s) -> None:
+    """Veredito do blend: Fase 6 sem vizinha suspeita resolve sem rede; com suspeita, consulta as
+    vizinhas Gaia (separacao e delta G) e compara com o deslocamento do pico da triagem."""
+    print("  conferindo o blend", flush=True)
+    desloc = getattr(s, "deslocamento_px", None)
+    if not bool(s.suspeito_blend):
+        veredito, motivo = "ok", "a Fase 6 não achou vizinha Gaia que explique o sinal"
+    else:
+        try:
+            g = ficha.get("gaia_g")
+            g = float(s.gaia_g) if g is None or pd.isna(g) else float(g)
+            alvo = SkyCoord(s.ra, s.dec, unit="deg")
+            suspeitas = vizinhas_suspeitas(_vizinhas_gaia_tabela(alvo), alvo, g, float(s.amplitude))
+            veredito, motivo = veredito_blend(None if pd.isna(desloc) else float(desloc), suspeitas)
+        except Exception as e:
+            print(f"  Gaia sem resposta ({type(e).__name__}); blend fica para conferir à mão",
+                  flush=True)
+            veredito, motivo = "atencao", BLEND_SEM_CONSULTA + ": confira o mapa por pixel"
+    ficha["blend_veredito"], ficha["blend_motivo"] = veredito, motivo
+    print(f"  blend: {veredito}, {motivo}", flush=True)
+
+
+def _parametros_gaia(alvo: SkyCoord, fonte: int) -> dict:
+    """Teff, logg e raio da fonte: GSP-Phot do I/355/gaiadr3 e, se vazio, I/355/paramp."""
+    def linha(catalogo, colunas):
+        res = retry(lambda: Vizier(columns=colunas, row_limit=-1, timeout=CONSULTA_TIMEOUT_S)
+                    .query_region(alvo, radius=3 * u.arcsec, catalog=catalogo), "VizieR",
+                    retries=CONSULTA_TENTATIVAS)
+        if not len(res):
+            return None
+        t = res[0].to_pandas()
+        t = t[t["Source"].astype("int64") == fonte]
+        return t.iloc[0] if len(t) else None
+
+    def valor(l, *nomes):
+        for n in nomes:
+            if l is not None and n in l.index and pd.notna(l[n]):
+                return float(l[n])
+        return np.nan
+
+    g = linha("I/355/gaiadr3", ["Source", "Teff", "logg"])
+    teff, logg, raio, origem = valor(g, "Teff"), valor(g, "logg"), np.nan, "gaiadr3"
+    p = linha("I/355/paramp", ["Source", "Teff", "logg", "Rad", "Rad-Flame", "Teff-HS", "Teff-S"])
+    if not np.isfinite(teff):
+        teff = valor(p, "Teff", "Teff-HS", "Teff-S")
+        origem = "paramp"
+    if not np.isfinite(logg):
+        logg = valor(p, "logg")
+    raio = valor(p, "Rad-Flame", "Rad")
+    return {"gaia_teff": teff, "gaia_logg": logg, "gaia_raio": raio,
+            "gaia_params_fonte": origem if np.isfinite(teff) else "sem"}
+
+
+def _buscar_params(ficha: dict, s) -> None:
+    """Teff/logg/raio do Gaia DR3. Sem resposta do servidor a chave fica ausente e a proxima
+    rodada tenta de novo; resposta sem Teff grava 'sem'."""
+    print("  buscando Teff/logg/raio no Gaia DR3 (gaiadr3, paramp)", flush=True)
+    for k in ("gaia_teff", "gaia_logg", "gaia_raio", "gaia_params_fonte"):
+        ficha.pop(k, None)
+    if "gaia_dr3" not in ficha:
+        print("  sem fonte Gaia na ficha; parâmetros ficam para depois", flush=True)
+        return
+    try:
+        ficha.update(_parametros_gaia(SkyCoord(ficha["gaia_ra"], ficha["gaia_dec"], unit="deg"),
+                                      int(ficha["gaia_dr3"])))
+    except Exception as e:
+        print(f"  Gaia sem resposta ({type(e).__name__}); seguindo sem Teff", flush=True)
+        return
+    print(f"  Teff {ficha['gaia_teff']:.0f} K" if np.isfinite(ficha["gaia_teff"])
+          else "  Gaia DR3 sem Teff para esta estrela", flush=True)
+
+
+def _buscar_tipo(ficha: dict, s) -> None:
+    """tipo_provavel/motivo_provavel para o tipo ambiguo (periodo, forma em 2P, Teff do Gaia)."""
+    if "," not in str(ficha.get("tipo_sugerido") or ""):
+        ficha["tipo_provavel"], ficha["motivo_provavel"] = "", "não se aplica: o tipo já é único"
+        return
+    print("  procurando o tipo provável", flush=True)
+    teff = ficha.get("gaia_teff")
+    teff = None if teff is None or pd.isna(teff) else float(teff)
+    logg = ficha.get("gaia_logg")
+    logg = None if logg is None or pd.isna(logg) else float(logg)
+    brutas = _carregar_setores(s)
+    tempo, fluxo = _juntar([_arrays(_flatten(lc, LS_FLATTEN_D)) for _, lc in brutas])
+    p1, p2, sigma = profundidades_minimos(tempo, fluxo, 2 * ficha["periodo_d"])
+    iguais = abs(p1 - p2) < 3 * sigma
+    unica = razao_harmonicos(tempo, fluxo, ficha["periodo_d"]) < 0.3
+    tipo, motivo = tipo_provavel(ficha["periodo_d"], teff, iguais, unica, logg)
+    ficha["tipo_provavel"], ficha["motivo_provavel"] = tipo or "", motivo
+    print(f"  tipo provável: {tipo or 'nenhum'} ({motivo})", flush=True)
+
+
+BUSCAS = {"gaia": _buscar_gaia, "vizier": _buscar_vizier, "oc": _buscar_oc,
+          "blend": _buscar_blend, "params": _buscar_params, "tipo": _buscar_tipo}
+ORDEM = ("gaia", "vizier", "oc", "blend", "params", "tipo")
+NOMES_BUSCA = {"gaia": "fonte Gaia DR3", "vizier": "busca no VizieR", "oc": "O-C dos setores",
+               "blend": "blend", "params": "Teff do Gaia DR3", "tipo": "tipo provável"}
 
 
 def tipo_aviso(aviso: str) -> str | None:
@@ -345,29 +593,45 @@ def completar_buscas(ficha: dict, s, faltas: list[str]) -> dict:
 def montar_ficha(s) -> dict:
     ficha = _medir(s)
     ficha["avisos"] = ""
-    return completar_buscas(ficha, s, ["gaia", "vizier"])
+    return completar_buscas(ficha, s, ["gaia", "vizier", "blend", "params", "tipo"])
+
+
+def pendente(anterior: dict, busca: str) -> bool:
+    """A busca local ou de rede nova ainda nao foi feita (ou ficou sem resposta) nesta ficha."""
+    if busca == "oc":
+        return "oc_fases" not in anterior
+    if busca == "blend":
+        return ("blend_veredito" not in anterior
+                or str(anterior.get("blend_motivo", "")).startswith(BLEND_SEM_CONSULTA))
+    if busca == "params":
+        return "gaia_params_fonte" not in anterior and "gaia_dr3" in anterior
+    return "motivo_provavel" not in anterior
 
 
 def plano(anterior: dict | None, refazer: bool = False) -> str:
     """O que fazer com uma estrela: 'nova', 'manter' ou 'completar:<buscas faltantes>'."""
     if anterior is None or refazer:
         return "nova"
-    avisos = str(anterior.get("avisos") or "")
-    if not avisos:
-        return "manter"
     faltas = set()
-    for aviso in filter(None, (x.strip() for x in avisos.split("|"))):
+    for aviso in filter(None, (x.strip() for x in str(anterior.get("avisos") or "").split("|"))):
         tipo = tipo_aviso(aviso)
         if tipo is None:
             return "nova"  # aviso que esta logica nao sabe completar
         faltas.add(tipo)
+    faltas |= {k for k in ("oc", "blend", "params") if pendente(anterior, k)}
+    if "gaia" in faltas and "gaia_params_fonte" not in anterior:
+        faltas.add("params")  # a fonte Gaia vem agora; o Teff e dela
+    # o tipo provavel depende do periodo (oc) e do Teff (params)
+    if pendente(anterior, "tipo") or faltas & {"oc", "params"}:
+        faltas.add("tipo")
     if not faltas:
-        return "nova"
-    return "completar:" + ",".join(k for k in ("gaia", "vizier") if k in faltas)
+        return "manter"
+    return "completar:" + ",".join(k for k in ORDEM if k in faltas)
 
 
 NUMERICAS = ["periodo_d", "periodo_erro_d", "fase_secundario", "epoca_bjd", "amplitude_mag_tess",
-             "gaia_ra", "gaia_dec", "gaia_g", "v_estimada", "gaia_sep_arcsec"]
+             "gaia_ra", "gaia_dec", "gaia_g", "v_estimada", "gaia_sep_arcsec", "oc_max_fase",
+             "gaia_teff", "gaia_logg", "gaia_raio"]
 
 
 def ler_fichas(caminho: Path) -> dict[int, dict]:
@@ -414,6 +678,13 @@ def _markdown(f: dict) -> str:
     for aviso in str(f.get("avisos") or "").split(" | "):
         if aviso:
             alerta += f"**Aviso: {aviso}**\n\n"
+    blend = (f"- Blend ({f['blend_veredito']}): {f['blend_motivo']}\n"
+             if f.get("blend_veredito") else "")
+    oc = f"- O-C do mínimo por setor, em fase: {f['oc_fases']}\n" if f.get("oc_fases") else ""
+    prov = (f"- Tipo provável: {f['tipo_provavel']} ({f['motivo_provavel']})\n"
+            if f.get("tipo_provavel") else
+            (f"- Tipo provável: nenhum ({f['motivo_provavel']})\n"
+             if "," in str(f.get("tipo_sugerido")) and f.get("motivo_provavel") else ""))
     return f"""## TIC {f['tic']} ({f['decisao']})
 
 {alerta}| Campo do VSX | Valor |
@@ -431,7 +702,7 @@ def _markdown(f: dict) -> str:
 - VizieR (catalogos de variaveis a 30"): {f['vizier_variaveis']}
 - Fonte Gaia escolhida a {num('gaia_sep_arcsec', '.1f')}" do TIC; suspeito_blend: {'sim' if f['suspeito_blend'] else 'nao'}
 - {ztf}
-"""
+{blend}{oc}{prov}"""
 
 
 def _gravar(fichas: list[dict]) -> Path:
@@ -502,9 +773,8 @@ def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
             try:
                 if acao.startswith("completar"):
                     faltas = acao.split(":")[1].split(",")
-                    nomes = {"vizier": "busca no VizieR", "gaia": "fonte Gaia DR3"}
                     print(f"\n[{i}/{n}] TIC {tic}: completando a ficha (faltava: "
-                          + " e ".join(nomes[k] for k in faltas) + ")", flush=True)
+                          + ", ".join(NOMES_BUSCA[k] for k in faltas) + ")", flush=True)
                     f = completar_buscas(dict(anteriores[tic]), s, faltas)
                     f["decisao"] = s.decisao
                     contagem["incompleta" if bloqueia(f.get("avisos")) else "completada"] += 1
@@ -521,6 +791,11 @@ def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
             saida = gravar()
             print(f"  {'ainda incompleta' if bloqueia(f.get('avisos')) else 'pronta'}: período {f['periodo_d']:.5f} d, tipo sugerido {f['tipo_sugerido']} "
                   f"({_tempo(time.monotonic() - t0)})", flush=True)
+            print(f"    blend: {f.get('blend_veredito')} ({f.get('blend_motivo')})\n"
+                  f"    período: {'alerta: ' + f['alerta_periodo'] if f.get('alerta_periodo') else 'consistente'}"
+                  f" (O-C máx {f.get('oc_max_fase', float('nan')):.3f} em fase)\n"
+                  f"    tipo provável: {f.get('tipo_provavel') or 'nenhum'} ({f.get('motivo_provavel')})",
+                  flush=True)
     except KeyboardInterrupt:
         print("\nInterrompido.", flush=True)
     print()

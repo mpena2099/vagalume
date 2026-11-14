@@ -150,3 +150,92 @@ def medir_periodo_setores(curvas, p_um_setor: float, eclipse: bool) -> dict:
     if not curvas:
         raise ValueError("sem curvas para medir o periodo")
     return _periodo_eclipse(curvas, p_um_setor) if eclipse else _periodo_ls(curvas, p_um_setor)
+
+
+OC_LIMITE_FASE = 0.02
+
+
+def instante_minimo(tempo, fluxo, periodo: float, harmonicos: int,
+                    epoca: float | None = None) -> tuple[float, float]:
+    """Instante do minimo mais perto do meio do setor e seu erro (d). Ajusta uma serie de
+    Fourier de `harmonicos` termos em `periodo`; o erro vem de 30 reamostragens com semente
+    fixa. Com `epoca` (um minimo conhecido, mesma escala de `tempo`) so vale o minimo a menos de
+    0,25 em fase do previsto por ela: numa binaria de minimos parecidos o mais fundo de cada
+    setor pode ser o secundario."""
+    tempo = np.asarray(tempo, dtype=float)
+    fluxo = np.asarray(fluxo, dtype=float)
+    meio = float(tempo.mean())
+    fase_grade = np.linspace(-0.5, 0.5, 2001)
+    if epoca is not None:
+        previsto = ((epoca - meio) / periodo + 0.5) % 1 - 0.5
+        valida = np.abs((fase_grade - previsto + 0.5) % 1 - 0.5) <= 0.25
+    else:
+        valida = np.ones(fase_grade.size, dtype=bool)
+
+    def base(x):
+        cols = [np.ones_like(x)]
+        for k in range(1, harmonicos + 1):
+            cols += [np.cos(2 * np.pi * k * x), np.sin(2 * np.pi * k * x)]
+        return np.column_stack(cols)
+
+    def minimo(t, f):
+        coef, *_ = np.linalg.lstsq(base((t - meio) / periodo), f, rcond=None)
+        modelo = np.where(valida, base(fase_grade) @ coef, np.inf)
+        return meio + fase_grade[int(np.argmin(modelo))] * periodo
+
+    t_min = minimo(tempo, fluxo)
+    rng = np.random.default_rng(0)
+    amostras = []
+    for _ in range(30):
+        i = rng.integers(0, tempo.size, tempo.size)
+        amostras.append(minimo(tempo[i], fluxo[i]) - t_min)
+    # mediana-MAD: uma reamostragem que cai no outro minimo nao estoura o erro
+    mad = np.median(np.abs(np.array(amostras) - np.median(amostras)))
+    return float(t_min), float(max(1.4826 * mad, periodo / 2000))
+
+
+def oc_setores(curvas, periodo: float, eclipse: bool, rotulos=None, epoca=None) -> dict:
+    """O-C do instante de minimo em cada setor contra T = T0 + n*P, juntando os setores.
+
+    `curvas`: lista de (tempo, fluxo) por setor, ja achatadas. Com 3 setores ou mais o ajuste
+    linear tem P livre e `oc_max_fase` e o maior residuo dele; com 2 setores nao ha residuo
+    (a reta passa pelos dois pontos), entao o P fica o da ficha e o residuo e o desencontro
+    dos dois minimos. `setores` segue a ordem do tempo, como `oc_fase`. `alinhado` = `oc_max_fase` < OC_LIMITE_FASE. Um setor so: `alinhado`
+    None (nada a conferir). O periodo refinado so existe se alinhado. `epoca`: ver `instante_minimo`."""
+    rotulos = list(rotulos) if rotulos is not None else list(range(len(curvas)))
+    manter = [i for i, (t, _) in enumerate(curvas) if len(t) > 20]
+    rotulos = [rotulos[i] for i in manter]
+    curvas = [curvas[i] for i in manter]
+    vazio = {"alinhado": None, "oc_fase": [], "setores": [], "oc_max_fase": np.nan, "periodo_d": periodo,
+             "periodo_erro_d": np.nan, "epoca": np.nan}
+    if len(curvas) < 2:
+        return vazio
+    harm = 8 if eclipse else 2
+    medidas = sorted((*instante_minimo(t, f, periodo, harm, epoca), r)
+                     for (t, f), r in zip(curvas, rotulos))
+    tempos = np.array([m[0] for m in medidas])
+    erros = np.array([m[1] for m in medidas])
+    n = np.round((tempos - tempos[0]) / periodo)
+    pesos = 1 / erros ** 2
+    if len(tempos) >= 3:
+        a = np.column_stack([np.ones_like(n), n])
+        cov = np.linalg.inv(a.T @ (pesos[:, None] * a))
+        b = cov @ (a.T @ (pesos * tempos))
+        resid = tempos - a @ b
+        qui2 = float(np.sum(pesos * resid ** 2)) / (len(tempos) - 2)
+        p_ref, erro_p, t0 = float(b[1]), float(np.sqrt(cov[1, 1] * max(qui2, 1.0))), float(b[0])
+    else:
+        t0 = float(np.sum(pesos * (tempos - n * periodo)) / np.sum(pesos))
+        resid = tempos - (t0 + n * periodo)
+        p_ref = float((tempos[1] - tempos[0]) / n[1]) if n[1] else periodo
+        erro_p = float(np.hypot(erros[0], erros[1]) / n[1]) if n[1] else np.nan
+    oc_fase = resid / periodo
+    maximo = float(np.max(np.abs(oc_fase)))
+    alinhado = maximo < OC_LIMITE_FASE
+    meio = float(np.mean([np.mean(t) for t, _ in curvas]))
+    saida = {**vazio, "setores": [m[2] for m in medidas], "alinhado": bool(alinhado), "oc_fase": [float(x) for x in oc_fase],
+             "oc_max_fase": maximo}
+    if alinhado:
+        saida.update(periodo_d=p_ref, periodo_erro_d=erro_p,
+                     epoca=t0 + round((meio - t0) / p_ref) * p_ref)
+    return saida

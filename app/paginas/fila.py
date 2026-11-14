@@ -45,6 +45,11 @@ def registrar(tic: int, decisao: str, total: int, fica_na_lista: bool):
     st.session_state.subir = True
 
 
+def rever(tic: int):
+    with conectar() as conn:
+        dados.rever_auto(conn, tic)
+
+
 def limpar(tic: int):
     with conectar() as conn:
         dados.apagar_revisao(conn, tic)
@@ -53,6 +58,7 @@ def limpar(tic: int):
 # ---------------------------------------------------------------- dados
 try:
     with conectar() as conn:
+        dados.descartar_automaticos(conn)  # idempotente; nunca toca em decisao existente
         todos = dados.carregar_candidatos(conn)
 except Exception as e:
     estilo.cabecalho("Revisão", descricao=DESCRICAO)
@@ -86,6 +92,18 @@ if sem_ficha:
                      label=f"{sem_ficha} confirmada(s) sem ficha: gerar na página Fichas")
 elif not pendentes:
     resumo[1].caption("Nenhuma candidata pendente.")
+
+auto = todos[todos["origem"] == "auto"]
+if not auto.empty:
+    with st.expander(f"{len(auto)} descartada{'s' if len(auto) != 1 else ''} automaticamente"):
+        st.caption("Descartadas só por evidência direta: pico do sinal longe demais do alvo. "
+                   "Rever devolve a candidata para a fila de pendentes.")
+        for a in auto.sort_values("tic").to_dict("records"):
+            c = st.columns([2, 8, 2], vertical_alignment="center")
+            c[0].markdown(f"**TIC {int(a['tic'])}**")
+            c[1].caption(a["motivo_auto"])
+            c[2].button("Rever", key=f"rever_{int(a['tic'])}", on_click=rever,
+                        args=(int(a["tic"]),), width="stretch")
 
 # ---------------------------------------------------------------- filtros
 st.sidebar.markdown("##### Filtros")
@@ -211,9 +229,14 @@ with direita:
         st.markdown("**Na curva dobrada em P, os pontos caem uns sobre os outros "
                     "formando uma linha clara?**")
         if r["decisao"] != "pendente":
-            st.success(f"Já marcada como **{ROTULOS[r['decisao']]}**."
+            st.success(f"Já marcada como **{ROTULOS[r['decisao']]}**"
+                       + (" (automático)." if r.get("origem") == "auto" else ".")
                        + (f" Nota: {r['nota']}" if pd.notna(r["nota"]) and r["nota"] else ""))
-            st.button("Limpar decisão", on_click=limpar, args=(tic,))
+            if r.get("origem") == "auto":
+                st.caption(r["motivo_auto"])
+                st.button("Rever", key=f"rever_caso_{tic}", on_click=rever, args=(tic,))
+            else:
+                st.button("Limpar decisão", on_click=limpar, args=(tic,))
         st.text_area("Nota (opcional)", key=f"nota_{tic}", height=70,
                      value=r["nota"] if pd.notna(r["nota"]) else "",
                      placeholder="Tipo provável, período real, o que chamou atenção")
