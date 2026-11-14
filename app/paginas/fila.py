@@ -1,7 +1,6 @@
 """Revisao visual das candidatas da Fase 7 (pagina do app)."""
 
 import sqlite3
-from datetime import datetime
 import sys
 from pathlib import Path
 
@@ -11,7 +10,7 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd
 import streamlit as st
 
-from app import dados, estilo, execucao, guia
+from app import dados, estilo, execucao, guia, paineis
 from config import SQLITE_PATH, VSX_DIR
 
 ORDENACOES = {
@@ -19,9 +18,7 @@ ORDENACOES = {
     "Sinal mais centrado no alvo primeiro": [("deslocamento_px", True)],
     "Mais brilhante primeiro (Tmag)": [("tmag", True)],
 }
-DESCRICAO = ("As candidatas que o pipeline achou e nenhum catálogo conhece. Para cada uma, olhe "
-             "a curva em P e o mapa e decida: Confirmar, Dúvida ou Descartar. A decisão fica "
-             "gravada, e as confirmadas viram fichas para o VSX.")
+DESCRICAO = "Olhe a curva em P e o mapa de cada candidata e decida. As confirmadas viram fichas."
 ROTULOS = {"confirmado": "Confirmado", "duvida": "Dúvida", "descartado": "Descartado",
            "pendente": "Pendente"}
 
@@ -32,20 +29,25 @@ def conectar() -> sqlite3.Connection:
 
 def mover(delta: int, total: int):
     st.session_state.pos = max(0, min(total - 1, st.session_state.pos + delta))
+    st.session_state.tab_n = st.session_state.get("tab_n", 0) + 1
 
 
 def registrar(tic: int, decisao: str, total: int, fica_na_lista: bool):
     nota = st.session_state.get(f"nota_{tic}", "")
     with conectar() as conn:
         dados.salvar_revisao(conn, tic, decisao, nota)
-    # Se a decisao tira a candidata da lista (ex: filtro Pendente), a proxima sobe
-    # pra posicao atual: avancar aqui pularia uma sem mostrar.
+    # Se a decisao tira a candidata da lista (filtro Pendente), a proxima sobe pra posicao
+    # atual: avancar aqui pularia uma sem mostrar.
     if fica_na_lista:
         mover(+1, total)
     else:
-        # a lista encolheu: conta as decisoes para o numero da posicao seguir avancando
-        st.session_state.decididos = st.session_state.get("decididos", 0) + 1
+        st.session_state.tab_n = st.session_state.get("tab_n", 0) + 1
     st.session_state.subir = True
+
+
+def rever(tic: int):
+    with conectar() as conn:
+        dados.rever_auto(conn, tic)
 
 
 def limpar(tic: int):
@@ -53,281 +55,60 @@ def limpar(tic: int):
         dados.apagar_revisao(conn, tic)
 
 
-def buscar():
-    st.session_state.confirmar_busca = False
-    if not execucao.rodando():  # clique duplo nao abre duas buscas
-        execucao.iniciar()
-
-
-def pedir_confirmacao(sim: bool):
-    st.session_state.confirmar_busca = sim
-
-
-def esquecer_busca():
-    execucao.LOG.unlink(missing_ok=True)
-
-
-def esquecer_ficha():
-    execucao.FICHA_LOG.unlink(missing_ok=True)
-
-
-def iniciar_fichas():
-    st.session_state.confirmar_fichas = False
-    if not execucao.rodando() and not execucao.rodando_ficha():
-        execucao.iniciar_ficha(bool(st.session_state.get("fichas_duvidas", False)))
-
-
-def pedir_confirmacao_fichas(sim: bool):
-    st.session_state.confirmar_fichas = sim
-
-
-def pedir_cancelar_fichas(sim: bool):
-    st.session_state.confirmar_cancelar_ficha = sim
-
-
-def cancelar_fichas():
-    execucao.cancelar_ficha()
-    st.session_state.confirmar_cancelar_ficha = False
-
-
-def botao_buscar(chave: str):
-    if execucao.rodando_ficha():
-        st.button("Buscar mais candidatas", disabled=True, key=f"{chave}_espera")
-        st.info("A geração das fichas do VSX está rodando: espere terminar para buscar mais "
-                "candidatas.")
-        return
-    # dois passos: um clique sem querer nao dispara 1 a 2 horas de rede
-    if st.session_state.get("confirmar_busca"):
-        st.warning("A busca leva 1 a 2 horas e baixa curvas de ~500 estrelas. Começar agora?")
-        sim, nao = st.columns(2)
-        sim.button("Sim, buscar", type="primary", on_click=buscar, key=f"{chave}_sim",
-                   width="stretch")
-        nao.button("Não", on_click=pedir_confirmacao, args=(False,), key=f"{chave}_nao",
-                   width="stretch")
-    else:
-        st.button("Buscar mais candidatas", type="primary", on_click=pedir_confirmacao,
-                  args=(True,), key=chave)
-    st.caption("Escolhe sozinho uma região do céu ainda não varrida e roda o pipeline "
-               "inteiro (1 a 2 horas). Pode fechar a página: a busca continua. "
-               "Pelo terminal, na pasta do projeto:")
-    st.code(execucao.COMANDO, language="bash")
-
-
-@st.fragment(run_every=5)
-def progresso():
-    if not execucao.rodando():
-        st.rerun()  # terminou: recarrega a pagina inteira com as candidatas novas
-    log = execucao.ler_log()
-    e = execucao.estado(log)
-    # sem log, ou log de uma rodada anterior: veio do terminal (log vazio = acabou de comecar)
-    if not execucao.LOG.exists() or e["terminou"] or e["erro"] or e["cancelada"]:
-        st.info("Uma busca de candidatas está rodando, iniciada pelo terminal: o progresso "
-                "aparece lá. As candidatas novas entram na fila quando ela terminar.")
-        return
-    minutos = execucao.minutos_desde_inicio()
-    with st.container(border=True):
-        st.markdown("**Buscando mais candidatas**"
-                    + (f" no campo {e['campo']}" if e["campo"] else ""))
-        texto = e["fase"] or "Escolhendo o campo"
-        if e["progresso"]:
-            i, n = e["progresso"]
-            st.progress(min(i / n, 1.0), text=f"{texto}: {i} de {n}")
-        else:
-            st.progress(0.0, text=texto)
-        st.caption(("" if minutos is None else f"{minutos:.0f} min desde o início. ")
-                   + "Pode fechar a página: a busca continua e as candidatas novas entram na fila.")
-        with st.expander("Ver o log"):
-            st.code("\n".join(execucao.ler_log().splitlines()[-15:]) or "(vazio)")
-        st.button("Cancelar busca", on_click=execucao.cancelar,
-                  help="Encerra agora. Esta região é refeita do início na próxima busca; "
-                       "suas decisões não são tocadas.")
-
-
-@st.fragment(run_every=5)
-def progresso_ficha():
-    if not execucao.rodando_ficha():
-        st.rerun()
-    log = execucao.ler_log_ficha()
-    e = execucao.estado_ficha(log)
-    if not execucao.FICHA_LOG.exists() or e["erro"] or e["cancelada"] or e["terminou"]:
-        st.info("A geração das fichas do VSX está rodando, iniciada pelo terminal: o progresso "
-                "aparece lá. As fichas entram na página Fichas quando ela terminar.")
-        return
-    minutos = execucao.minutos_desde_inicio(execucao.FICHA_LOG)
-    with st.container(border=True):
-        st.markdown("**Gerando as fichas do VSX**"
-                    + (f" na TIC {e['tic']}" if e["tic"] else ""))
-        texto = e["etapa"] or "Preparando"
-        if e["progresso"]:
-            i, n = e["progresso"]
-            st.progress(min(i / n, 1.0), text=f"{texto}: {i} de {n}")
-        else:
-            st.progress(0.0, text=texto)
-        st.caption(("" if minutos is None else f"{minutos:.0f} min desde o início. ")
-                   + "Pode fechar a página: as fichas continuam e ficam salvas.")
-        with st.expander("Ver o log"):
-            st.code("\n".join(log.splitlines()[-15:]) or "(vazio)")
-        if st.session_state.get("confirmar_cancelar_ficha"):
-            st.warning("Cancelar agora? As fichas já gravadas ficam salvas.")
-            sim, nao = st.columns(2)
-            sim.button("Sim, cancelar", type="primary", on_click=cancelar_fichas,
-                       key="ficha_cancelar_sim", width="stretch")
-            nao.button("Não", on_click=pedir_cancelar_fichas, args=(False,),
-                       key="ficha_cancelar_nao", width="stretch")
-        else:
-            st.button("Cancelar geração", on_click=pedir_cancelar_fichas, args=(True,),
-                      key="ficha_cancelar",
-                      help="Encerra agora. As fichas já gravadas não são apagadas; rodar de "
-                           "novo retoma.")
-
-
-@st.cache_data(ttl=1800, show_spinner="Testando o VizieR...")
-def vizier_no_ar() -> tuple[bool, str]:
-    return execucao.vizier_no_ar(), datetime.now().strftime("%H:%M")
-
-
-def aviso_vizier():
-    """Ficha incompleta depende do VizieR de Estrasburgo: diz se ele voltou."""
-    no_ar, hora = vizier_no_ar()
-    if no_ar:
-        st.success(f"O VizieR está respondendo (testado às {hora}): gere as fichas de novo para "
-                   "completar a busca que faltou.")
-    else:
-        st.info(f"O VizieR de Estrasburgo ainda está fora do ar (testado às {hora}; o app testa "
-                "de novo a cada 30 min). Gerar agora deve falhar de novo na mesma busca.")
-        st.button("Testar agora", on_click=vizier_no_ar.clear, key="vizier_testar")
-
-
-def botao_fichas(sem_ficha: int):
-    if execucao.rodando():
-        st.button("Gerar fichas do VSX", disabled=True, key="fichas_gerar_espera")
-        st.info("A busca de candidatas está rodando: espere terminar para gerar as fichas.")
-        return
-    st.checkbox("Incluir as marcadas como dúvida", key="fichas_duvidas")
-    if st.session_state.get("confirmar_fichas"):
-        st.warning(f"Gerar ou completar {sem_ficha} ficha(s) do VSX? Leva alguns minutos por estrela.")
-        sim, nao = st.columns(2)
-        sim.button("Sim, gerar", type="primary", on_click=iniciar_fichas,
-                   key="fichas_sim", width="stretch")
-        nao.button("Não", on_click=pedir_confirmacao_fichas, args=(False,),
-                   key="fichas_nao", width="stretch")
-    else:
-        st.button("Gerar fichas do VSX", type="primary", on_click=pedir_confirmacao_fichas,
-                  args=(True,), key="fichas_gerar")
-    st.caption("Mede o período com todos os setores do TESS, sugere o tipo e grava "
-               "`data/vsx/fichas.md`. Pelo terminal, na pasta do projeto:")
-    st.code(execucao.FICHA_COMANDO, language="bash")
-
-
-def painel_ficha(sem_ficha: int, incompletas: int = 0):
-    """Fase 8 pelo app: progresso se roda, resultado da ultima e botao quando falta ficha."""
-    if execucao.rodando_ficha():
-        progresso_ficha()
-        return
-    e = execucao.estado_ficha(execucao.ler_log_ficha())
-    if e["erro"]:
-        st.error(f"A geração das fichas parou ({e['erro']}). Tentar de novo retoma as prontas.")
-        st.button("Ok", on_click=esquecer_ficha, key="ficha_erro_ok")
-    elif e["cancelada"]:
-        st.info("Geração de fichas cancelada. As fichas prontas ficaram salvas; rodar de novo "
-                "retoma.")
-        st.button("Ok", on_click=esquecer_ficha, key="ficha_cancelada_ok")
-    elif e["terminou"]:
-        total = len(dados.com_ficha(VSX_DIR / "fichas.csv"))
-        faltam = len(dados.fichas_com_aviso(VSX_DIR / "fichas.csv"))
-        if faltam:
-            st.warning(f"Geração terminada: {total - faltam} de {total} fichas prontas e {faltam} "
-                       "ainda incompleta(s), porque a busca num servidor externo (VizieR ou Gaia) "
-                       "não respondeu. Gere de novo mais tarde: só essa busca é refeita. Os "
-                       "avisos de cada uma estão na página Fichas.")
-        else:
-            st.success(f"Geração terminada: as {total} fichas estão prontas na página Fichas.")
-        st.page_link("paginas/fichas.py", label="Abrir as fichas", icon=":material/menu_book:")
-        st.button("Ok", on_click=esquecer_ficha, key="ficha_fim_ok")
-    if incompletas:
-        aviso_vizier()
-    if sem_ficha + incompletas:
-        botao_fichas(sem_ficha + incompletas)
-
-
-def painel_busca(pendentes: int, sem_ficha: int = 0, incompletas: int = 0, parciais: int = 0):
-    """Busca de mais candidatas: progresso se roda; resultado da ultima; botao se a fila acabou."""
-    if execucao.rodando():
-        progresso()
-        if sem_ficha + incompletas:
-            botao_fichas(sem_ficha + incompletas)
-        return
-    if execucao.rodando_ficha():
-        painel_ficha(sem_ficha, incompletas)
-        return
-    e = execucao.estado(execucao.ler_log())
-    if e["fim_da_grade"]:
-        st.info("A grade de regiões do céu acabou: todas foram varridas. Para continuar, "
-                "acrescente faixas em `FAIXAS_B_DEG` (src/campos.py).")
-    elif e["erro"]:
-        st.error(f"A última busca parou ({e['erro']}). Tentar de novo refaz a mesma região.")
-        botao_buscar("buscar_erro")
-        return
-    elif e["cancelada"]:
-        st.info("Busca cancelada. A região interrompida é refeita do início na próxima busca.")
-        st.button("Ok", on_click=esquecer_busca)
-    elif e["terminou"]:
-        st.success(f"Busca terminou{' no campo ' + e['campo'] if e['campo'] else ''}. "
-                   "As candidatas novas já estão na fila.")
-        st.button("Ok", on_click=esquecer_busca)
-    if pendentes == 0:
-        st.success("Fila revisada: nenhuma candidata pendente.")
-        if sem_ficha:
-            st.markdown(f"**Próximo passo: a ficha do VSX.** {sem_ficha} confirmada(s) sem ficha.")
-        elif incompletas and not execucao.estado_ficha(execucao.ler_log_ficha())["terminou"]:
-            st.markdown(f"**{incompletas} ficha(s) do VSX incompleta(s)** (veja os avisos na "
-                        "página Fichas). Gerar de novo refaz só a busca que faltou.")
-        elif parciais:
-            st.markdown(f"**{parciais} ficha(s) prontas para submeter.** A busca no VizieR foi "
-                        "feita nos principais catálogos de variáveis, não em todos, porque o "
-                        "VizieR de Estrasburgo está fora. Se quiser, quando ele voltar, gere de "
-                        "novo para a busca completa (opcional).")
-            if vizier_no_ar()[0]:
-                incompletas = parciais
-        painel_ficha(sem_ficha, incompletas)
-        botao_buscar("buscar_fim")
-
-
 # ---------------------------------------------------------------- dados
 try:
     with conectar() as conn:
+        dados.descartar_automaticos(conn)  # idempotente; nunca toca em decisao existente
         todos = dados.carregar_candidatos(conn)
 except Exception as e:
-    estilo.cabecalho("Revisão visual", descricao=DESCRICAO)
+    estilo.cabecalho("Revisão", descricao=DESCRICAO)
     st.error(f"Não consegui ler as candidatas em {SQLITE_PATH}: {e}\n\n"
              "Rode `python pipeline.py` (ou as fases 2 a 7) antes de abrir o app.")
     st.stop()
 
+with st.sidebar.expander("Pipeline", expanded=execucao.rodando()):
+    paineis.painel_busca(int((todos["decisao"] == "pendente").sum()) if not todos.empty else 0)
+
 if todos.empty:
-    estilo.cabecalho("Revisão visual", descricao=DESCRICAO)
-    st.warning("A tabela candidatos_fase7 está vazia.")
-    painel_busca(0)
+    estilo.cabecalho("Revisão", descricao=DESCRICAO)
+    st.warning("A tabela candidatos_fase7 está vazia. Use \"Buscar mais candidatas\" no "
+               "Pipeline, na barra lateral.")
     st.stop()
 
 revisados = int((todos["decisao"] != "pendente").sum())
-estilo.cabecalho("Revisão visual", (revisados, len(todos)), "revisados", DESCRICAO)
+pendentes = len(todos) - revisados
+estilo.cabecalho("Revisão", (revisados, len(todos)), "revisados", DESCRICAO)
 with conectar() as conn:
     dados.migrar_envios(conn, VSX_DIR / "fichas.csv")
     estilo.trilha_html(dados.marcos(conn, VSX_DIR / "fichas.csv"))
-pendentes = len(todos) - revisados
 confirmadas = set(todos.loc[todos["decisao"] == "confirmado", "tic"].astype(int))
-painel_busca(pendentes, len(dados.sem_ficha(confirmadas, VSX_DIR / "fichas.csv")),
-             len(confirmadas & dados.fichas_com_aviso(VSX_DIR / "fichas.csv")),
-             len(confirmadas & (dados.fichas_com_aviso(VSX_DIR / "fichas.csv", so_bloqueio=False)
-                                - dados.fichas_com_aviso(VSX_DIR / "fichas.csv"))))
-if pendentes and not execucao.rodando():
-    with st.sidebar.expander("Buscar mais candidatas"):
-        st.caption(f"Ainda há {pendentes} pendente(s): o ideal é revisar antes.")
-        botao_buscar("buscar_lateral")
+sem_ficha = len(dados.sem_ficha(confirmadas, VSX_DIR / "fichas.csv"))
 
-# ---------------------------------------------------------------- barra lateral
+resumo = st.columns([1, 3], vertical_alignment="center")
+resumo[0].markdown(f"**{pendentes} pendentes**" if pendentes else "**Fila revisada**")
+if sem_ficha:
+    with resumo[1]:
+        st.page_link("paginas/fichas.py", icon=":material/menu_book:",
+                     label=f"{sem_ficha} confirmada(s) sem ficha: gerar na página Fichas")
+elif not pendentes:
+    resumo[1].caption("Nenhuma candidata pendente.")
+
+auto = todos[todos["origem"] == "auto"]
+if not auto.empty:
+    with st.expander(f"{len(auto)} descartada{'s' if len(auto) != 1 else ''} automaticamente"):
+        st.caption("Descartadas só por evidência direta: pico do sinal longe demais do alvo. "
+                   "Rever devolve a candidata para a fila de pendentes.")
+        for a in auto.sort_values("tic").to_dict("records"):
+            c = st.columns([2, 8, 2], vertical_alignment="center")
+            c[0].markdown(f"**TIC {int(a['tic'])}**")
+            c[1].caption(a["motivo_auto"])
+            c[2].button("Rever", key=f"rever_{int(a['tic'])}", on_click=rever,
+                        args=(int(a["tic"]),), width="stretch")
+
+# ---------------------------------------------------------------- filtros
 st.sidebar.markdown("##### Filtros")
-situacao = st.sidebar.selectbox("Situação", ["todas"] + list(ROTULOS), index=0,
+situacao = st.sidebar.selectbox("Situação", ["todas"] + list(ROTULOS),
+                                index=1 + list(ROTULOS).index("pendente"),
                                 format_func=lambda k: ROTULOS.get(k, "Todas"))
 ordem = st.sidebar.selectbox("Ordenar por", list(ORDENACOES))
 busca = st.sidebar.text_input("Buscar TIC")
@@ -348,8 +129,40 @@ assinatura = (situacao, ordem, busca.strip())
 if st.session_state.get("assinatura") != assinatura:
     st.session_state.assinatura = assinatura
     st.session_state.pos = 0
-    st.session_state.decididos = 0
+    st.session_state.tab_n = st.session_state.get("tab_n", 0) + 1
 st.session_state.pos = max(0, min(total - 1, st.session_state.get("pos", 0)))
+
+# ---------------------------------------------------------------- tabela
+tabela = pd.DataFrame({
+    "TIC": lista["tic"].astype(int),
+    "P (d)": lista["periodo_d"].round(5),
+    "Amplitude (%)": (lista["amplitude"] * 100).round(2),
+    "Força (x ruído)": lista["forca"].round(1),
+    "Pico (px do alvo)": lista["deslocamento_px"].round(1),
+    "Sugestão": [{"confirmado": "Confirmar", "duvida": "Dúvida", "descartado": "Descartar"}[
+        dados.sugestao(dados.checklist(r))] for r in lista.to_dict("records")],
+    "Decisão": lista["decisao"].map(ROTULOS),
+})
+chave_tab = f"fila_tabela_{st.session_state.get('tab_n', 0)}"
+
+
+def clicar_tabela():
+    """Clique em qualquer celula da linha abre a candidata."""
+    celulas = st.session_state[chave_tab]["selection"].get("cells", [])
+    if celulas:
+        st.session_state.pos = min(total - 1, celulas[0][0])
+        st.session_state.tab_n = st.session_state.get("tab_n", 0) + 1
+
+
+aberta = st.session_state.pos
+tabela.insert(0, " ", ["▶" if i == aberta else "" for i in range(total)])
+destaque = tabela.style.apply(
+    lambda linha: ["background-color: rgba(255, 196, 0, 0.18); font-weight: 600"
+                   if linha.name == aberta else "" for _ in linha], axis=1)
+st.dataframe(
+    destaque, hide_index=True, width="stretch", height=min(36 * (total + 1) + 3, 215),
+    on_select=clicar_tabela, selection_mode="single-cell", key=chave_tab,
+    column_config={" ": st.column_config.TextColumn(width=30)})
 
 # ---------------------------------------------------------------- candidata
 r = lista.iloc[st.session_state.pos].to_dict()
@@ -361,10 +174,10 @@ if st.session_state.pop("subir", False):
 nav = st.columns([1, 1, 5], vertical_alignment="center")
 nav[0].button("◀ Anterior", on_click=mover, args=(-1, total), width="stretch")
 nav[1].button("Próximo ▶", on_click=mover, args=(+1, total), width="stretch")
-_ja = st.session_state.get("decididos", 0)
 nav[2].markdown(
-    f"**{_ja + st.session_state.pos + 1} de {_ja + total}** &nbsp;·&nbsp; TIC {tic} "
-    f"&nbsp;·&nbsp; RA {r['ra']:.5f} &nbsp;·&nbsp; Dec {r['dec']:+.5f}",
+    f"**{st.session_state.pos + 1} de {total}** &nbsp;·&nbsp; TIC {tic} "
+    f"&nbsp;·&nbsp; RA {r['ra']:.5f} &nbsp;·&nbsp; Dec {r['dec']:+.5f} &nbsp;·&nbsp; "
+    + "  |  ".join(f"[{nome}]({url})" for nome, url in dados.links(r["ra"], r["dec"], tic).items()),
     unsafe_allow_html=True)
 
 try:
@@ -374,12 +187,21 @@ except Exception:
     _treino = None
 guia.mostrar_guia(st, _treino, aberto=False)
 
+
+def _texto(v) -> str:
+    return "" if v is None or pd.isna(v) else str(v)
+
+
+desloc = r.get("deslocamento_px")
+itens = dados.checklist(r)
 figura = Path(r["figura"]) if r.get("figura") else None
-if figura and figura.exists():
-    if figura.with_name(f"{tic}_p.png").exists():
-        cols = st.columns(2)
+tem_paineis = bool(figura and figura.exists() and figura.with_name(f"{tic}_p.png").exists())
+
+esquerda, direita = st.columns([5, 2], gap="medium")
+with esquerda:
+    if tem_paineis:
         legendas = {k: f"**{titulo}.** {pergunta}" for k, (titulo, pergunta) in guia.ROTEIRO.items()}
-        for col, nome in zip(cols, ("p", "mapa")):
+        for col, nome in zip(st.columns(2), ("p", "mapa")):
             caminho = figura.with_name(f"{tic}_{nome}.png")
             if caminho.exists():
                 with col.container(key=f"figura_{nome}"):
@@ -389,28 +211,48 @@ if figura and figura.exists():
                 col.caption("Painel indisponível.")
         caminho_2p = figura.with_name(f"{tic}_2p.png")
         if caminho_2p.exists():
-            with st.expander("Período: P ou 2P? (depois de confirmar, para a ficha do VSX)"):
+            with st.expander("Antes de confirmar, olhe a curva em 2P",
+                             expanded=r.get("metodo") == "bls"):
                 with st.columns(2)[0].container(key="figura_2p"):
                     st.image(caminho_2p, width="stretch")
-                st.markdown(f"**{guia.PERIODO[0]}.** {guia.PERIODO[1]}")
-                guia.mostrar_figura_periodo(st)
-    else:
+                st.markdown("Dois vales diferentes, ou um vale só e o resto plano: binária, o "
+                            "período da ficha é 2P. A mesma onda duas vezes: pulsante ou "
+                            "rotação, o período é P. Detalhes e figura no guia acima.")
+    elif figura and figura.exists():
         with st.container(key="figura_unica"):
             st.image(figura, width="stretch")
-else:
-    st.error(f"Sem figura para esta candidata: {r.get('erro') or 'rode a Fase 7 de novo'}")
+    else:
+        st.error(f"Sem figura para esta candidata: {r.get('erro') or 'rode a Fase 7 de novo'}")
 
-st.markdown("  |  ".join(f"[{nome}]({url})" for nome, url in dados.links(r["ra"], r["dec"], tic).items()))
+with direita:
+    with st.container(border=True):
+        st.markdown("**Na curva dobrada em P, os pontos caem uns sobre os outros "
+                    "formando uma linha clara?**")
+        if r["decisao"] != "pendente":
+            st.success(f"Já marcada como **{ROTULOS[r['decisao']]}**"
+                       + (" (automático)." if r.get("origem") == "auto" else ".")
+                       + (f" Nota: {r['nota']}" if pd.notna(r["nota"]) and r["nota"] else ""))
+            if r.get("origem") == "auto":
+                st.caption(r["motivo_auto"])
+                st.button("Rever", key=f"rever_caso_{tic}", on_click=rever, args=(tic,))
+            else:
+                st.button("Limpar decisão", on_click=limpar, args=(tic,))
+        st.text_area("Nota (opcional)", key=f"nota_{tic}", height=70,
+                     value=r["nota"] if pd.notna(r["nota"]) else "",
+                     placeholder="Tipo provável, período real, o que chamou atenção")
+        st.button("Confirmar (parece real)", type="primary", on_click=registrar,
+                  args=(tic, "confirmado", total, situacao in ("todas", "confirmado")),
+                  width="stretch")
+        b = st.columns(2)
+        b[0].button("Dúvida", on_click=registrar,
+                    args=(tic, "duvida", total, situacao in ("todas", "duvida")),
+                    width="stretch")
+        b[1].button("Descartar", on_click=registrar,
+                    args=(tic, "descartado", total, situacao in ("todas", "descartado")),
+                    width="stretch")
 
-# ---------------------------------------------------------------- ficha e decisao
-desloc = r.get("deslocamento_px")
-def _texto(v) -> str:
-    return "" if v is None or pd.isna(v) else str(v)
-
-
-itens = dados.checklist(r)
-esquerda, direita = st.columns([3, 2], gap="medium")
-with esquerda:
+c_ficha, c_check = st.columns([3, 2], gap="medium")
+with c_ficha:
     estilo.ficha([
         ("Período", f"{r['periodo_d']:.5f} d", r["metodo"].upper()),
         ("Amplitude", f"{r['amplitude'] * 100:.2f}%", f"{r['forca']:.1f}x o ruído"),
@@ -420,50 +262,9 @@ with esquerda:
          _texto(r.get("periodos_extra")) or None),
     ])
     st.caption(f"Todos os sinais da estrela: {r.get('sinais_todos')}")
+with c_check:
     estilo.checklist_html(itens, dados.sugestao(itens))
 
-with direita:
-    with st.container(border=True):
-        st.markdown("**Na curva dobrada em P, os pontos caem uns sobre os outros "
-                    "formando uma linha clara?**")
-        st.caption("Olhe o painel P: a linha preta deve repetir uma forma estável, "
-                   "não uma nuvem borrada sem desenho.")
-        if r["decisao"] != "pendente":
-            st.success(f"Já marcada como **{ROTULOS[r['decisao']]}**."
-                       + (f" Nota: {r['nota']}" if pd.notna(r["nota"]) and r["nota"] else ""))
-            st.button("Limpar decisão", on_click=limpar, args=(tic,))
-        st.text_area("Nota (opcional): tipo provável, período real, o que chamou atenção",
-                     key=f"nota_{tic}", value=r["nota"] if pd.notna(r["nota"]) else "", height=70)
-        b = st.columns(2)
-        b[0].button("Confirmar (parece real)", type="primary", on_click=registrar,
-                    args=(tic, "confirmado", total, situacao in ("todas", "confirmado")),
-                    width="stretch")
-        b[1].button("Dúvida", on_click=registrar,
-                    args=(tic, "duvida", total, situacao in ("todas", "duvida")),
-                    width="stretch")
-        st.button("Descartar (falso alarme)", on_click=registrar,
-                  args=(tic, "descartado", total, situacao in ("todas", "descartado")),
-                  width="stretch")
-
-if figura and figura.exists() and figura.with_name(f"{tic}_p.png").exists():
+if tem_paineis:
     with st.expander("Figura completa (curva no tempo, periodograma, campo)"):
         st.image(figura, width="stretch")
-
-with st.expander("Como decidir (o que procurar na figura)"):
-    st.markdown("""| O que você vê | Decisão |
-|---|---|
-| Curva dobrada limpa: os ciclos caem uns sobre os outros e a linha preta tem forma clara | segue para os outros itens |
-| Curva dobrada borrada, sem forma, ou formada por um ou dois eventos isolados | **Descartar** ou **Dúvida** |
-| Mapa de amplitude com o pico (x vermelho) sobre o alvo (+ verde) | a favor |
-| Pico do sinal em outro pixel, sobre outra estrela | **Descartar** (o sinal é da vizinha) |
-| Periodograma com um pico isolado e alto | a favor |
-| Período perto de 1 d, 13,7 d ou 6,85 d, ou saltos na curva nas bordas das lacunas | **Descartar** (sistemático do TESS) |
-| Links do VSX/SIMBAD mostram uma variável já catalogada com esse período a até ~2' | **Descartar** (já conhecida) |
-
-**Detalhes que ajudam**
-- Depois de confirmar, abra "Período: P ou 2P?" e compare as curvas. Se em 2P aparecem dois mínimos de profundidades diferentes, é binária eclipsante e o período real é 2P. Se em 2P sobra um vale só e o resto plano (e em P metade dos pontos atravessa o vale em 1,00), também é binária com período 2P: o segundo eclipse é raso demais. Se os dois mínimos em 2P são iguais, há duas leituras: pulsante ou rotação com período P, ou binária de contato (EW) com período 2P. Amplitude grande (acima de ~10%) e 2P (o período orbital) acima de ~0,22 d favorecem EW; com 2P abaixo de ~0,22 d, só pulsante. Casos de referência no README.
-- Eclipses estreitos e planos fora do eclipse: binária EA. Variação contínua com mínimos diferentes: EB. Mínimos quase iguais e variação contínua: EW (contato).
-- Uma senoide com amplitude que muda de setor para setor costuma ser rotação (manchas).
-- **Confirmar** não é descoberta: quer dizer que passa no olho. Antes de submeter ao VSX, refaça a busca de variáveis conhecidas e confira o checklist da especificação (seção 11).
-- **Descartar** não apaga nada: a decisão fica gravada com a nota e dá para rever no filtro "Situação".
-""")

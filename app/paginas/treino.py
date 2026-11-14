@@ -15,9 +15,7 @@ import streamlit as st
 from app import dados, estilo, guia
 from config import DEMO, SQLITE_PATH, TREINO_DIR, VSX_DIR
 
-DESCRICAO = ("Casos de resposta conhecida, para aprender a decidir antes da revisão de verdade. "
-             "Você responde, vê a resposta certa com a explicação e onde estava a pista. Nada "
-             "muda nas candidatas; só o seu histórico de acertos é gravado.")
+DESCRICAO = "Casos de resposta conhecida para treinar a decisão. Só o seu histórico é gravado."
 ROTULOS = {"confirmado": "Confirmado", "duvida": "Dúvida", "descartado": "Descartado"}
 
 
@@ -97,28 +95,26 @@ ordem = st.session_state.treino_ordem
 pos = st.session_state.treino_pos
 feitos = st.session_state.treino_total
 estilo.cabecalho("Treino", (st.session_state.treino_acertos, feitos), "acertos", DESCRICAO)
-# no treino so importa a primeira etapa da trilha: uma linha com o nivel e o que falta
-with conectar_historico() as conn:
-    _etapa = dados.marcos(conn, VSX_DIR / "fichas.csv")[0]
-    _nivel, _falta = dados.nivel_treino(dados.ler_tentativas(conn))
-st.info(f"**Nível: {_nivel}.** "
-        + ("Treino em dia ✅" if _etapa["feito"]
-           else f"Para \"Treino em dia\" (80% nas últimas 20): {_etapa['detalhe']}.")
-        # com poucas respostas a dica do nivel repete o que falta para a etapa
-        + (f" {_falta[0].upper()}{_falta[1:]}." if _falta and not _falta.startswith("faltam") else ""))
 
 
 def mostrar_historico():
-    """Aproveitamento de todas as sessoes, gravado no banco."""
+    """Nivel e aproveitamento de todas as sessoes (gravado no banco), numa linha que abre o detalhe."""
     with conectar_historico() as conn:
         h = dados.ler_tentativas(conn)
+        etapa = dados.marcos(conn, VSX_DIR / "fichas.csv")[0]
+    nivel, falta = dados.nivel_treino(h)
     r = dados.resumo_treino(h)
     if r:
-        titulo = (f"Seu histórico: {r['geral']:.0%} de acerto em {r['respostas']} "
+        titulo = (f"Nível: {nivel} · {r['geral']:.0%} de acerto em {r['respostas']} "
                   f"{'resposta' if r['respostas'] == 1 else 'respostas'}")
     else:
-        titulo = "Seu histórico: ainda sem respostas"
+        titulo = f"Nível: {nivel} · ainda sem respostas"
     with st.expander(titulo):
+        st.markdown(
+            ("Treino em dia ✅" if etapa["feito"]
+             else f"Para \"Treino em dia\" (80% nas últimas 20): {etapa['detalhe']}.")
+            # com poucas respostas a dica do nivel repete o que falta para a etapa
+            + (f" {falta[0].upper()}{falta[1:]}." if falta and not falta.startswith("faltam") else ""))
         if not r:
             st.caption("Responda os casos abaixo para subir de nível.")
             return

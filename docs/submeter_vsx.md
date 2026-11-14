@@ -8,10 +8,10 @@ Faça uma estrela por vez. A AAVSO recomenda que as primeiras submissões de que
 
 Na página **Fichas** do app, para a estrela escolhida (a página já confere o VSX sozinha pelas coordenadas, guarda o tipo que você escolher, gera o comentário em inglês e baixa os anexos):
 
-1. **Leia os avisos da ficha.** Aviso que diz "Não submeta" impede o envio. Aviso que diz "Pode submeter" é só informativo.
-2. **Decida o tipo.** Se a ficha sugere "ROT, EW ou pulsante", escolha pela forma da curva em fase: dois mínimos iguais e curva contínua indicam EW (binária de contato); onda única e suave, ROT (mancha) ou pulsante. Na dúvida, prefira a estrela seguinte e deixe essa para depois.
-3. **Confira o período.** Com o alerta "períodos dos setores não alinham", abra a figura e veja se os eclipses de setores diferentes caem no mesmo lugar. Se não caem, o período ainda não está bom para enviar.
-4. **Veja a vizinha.** Com "Suspeito de blend: sim", abra o painel "Mapa por pixel e curvas da triagem" e veja onde está o pico do sinal (explicação logo abaixo).
+1. **Leia os avisos da ficha.** Aviso que diz "Não submeta" impede o envio. Aviso que diz "Pode submeter" é só informativo: com o VizieR do CDS fora do ar, a busca a 30" foi feita nos 25 principais catálogos de variáveis (VSX, GCVS, Gaia DR3, ATLAS, ASAS-SN e outros) em vez de nos milhares do VizieR inteiro. A checagem que evita enviar estrela já submetida é a do próprio VSX, que fica em outro servidor e a página faz ao vivo; o moderador confere de novo antes de aceitar.
+2. **Decida o tipo.** Quando a curva admite mais de um tipo ("ROT, EW ou pulsante"), a Fase 8 só sugere um se houver evidência direta: o período, a forma da curva dobrada em 2P (dois mínimos iguais e curva contínua indicam EW; onda única, ROT ou pulsante) e a temperatura da estrela no Gaia DR3 (Teff do GSP-Phot, ou do `I/355/paramp`). Exemplos: P menor que 0,25 d e Teff acima de 6500 K, DSCT; Teff acima de 10000 K e P entre 0,3 e 3 d, SPB; Teff entre 6800 e 7800 K e P entre 0,3 e 3 d, GDOR; Teff abaixo de 6000 K, onda única e P acima de 0,5 d, ROT; EW com mínimos iguais em 2P, 2P entre 0,2 e 1 d e Teff entre 4000 e 7000 K. Se duas regras valem juntas, se a Teff não existe ou se nenhuma regra serve, a ficha não sugere nada. Com sugestão, a página abre o tipo provável já escolhido e pede só que você o confirme (botão "Confirmar o tipo provável", depois de olhar a curva em fase). Sem sugestão, escolha pela forma da curva; na dúvida, prefira a estrela seguinte e deixe essa para depois.
+3. **Confira o período.** A Fase 8 mede o instante do mínimo em cada setor usado e ajusta uma reta T = T0 + n·P (O-C). Se o maior desvio é menor que 0,02 em fase, o alerta some e a ficha traz o período, o erro e a época desse ajuste. Se não, o alerta "períodos dos setores não alinham" traz o O-C de cada setor: abra a figura e veja se os mínimos de setores diferentes caem no mesmo lugar. Se não caem, o período ainda não está bom para enviar. Com um setor só não há o que conferir.
+4. **Veja a vizinha.** A ficha diz se o blend está resolvido (pico no alvo e vizinha a mais de 1 pixel), se o sinal parece da vizinha ou se ficou para você conferir (explicação logo abaixo). Nos dois últimos casos, abra o painel "Mapa por pixel e curvas da triagem".
 5. **Busque no VSX online.** A página Fichas faz isso sozinha e lista o que achar; para conferir à mão, em [vsx.aavso.org](https://vsx.aavso.org), use a busca por coordenadas com a RA e a Dec da ficha e raio de 1 minuto de arco. Se a estrela já aparece, alguém submeteu antes: não envie.
 
 ### O que é suspeita de blend
@@ -20,11 +20,13 @@ Os pixels do TESS são grandes: cada um cobre 21" do céu. A luz das estrelas pr
 
 A Fase 6 faz uma conta para cada vizinha do Gaia a até 42" (dois pixels) com até 4 magnitudes a menos que o alvo: quanto ela precisaria variar para produzir sozinha a variação observada? Se bastar menos de 50% do brilho dela, uma estrela real consegue, e a ficha sai com "suspeito de blend". Se precisasse de mais, a vizinha não explica o sinal.
 
-É uma suspeita, não um veredito. Quem decide é o mapa por pixel:
+É uma suspeita, e a Fase 8 a resolve sozinha com o deslocamento do pico do mapa por pixel (a distância do pico ao alvo, em pixels, que a triagem guarda) e a distância de cada vizinha suspeita (o Gaia dá a separação e a diferença de magnitude):
 
-- **Pico do sinal no pixel do alvo:** a variação é da sua estrela. Siga e mencione a vizinha no comentário (a frase em inglês gerada pela página já faz isso).
-- **Pico deslocado para o lado da vizinha:** o sinal é dela. Não submeta.
-- **Não dá para distinguir:** deixe a estrela para depois e comece pelas outras.
+- **Pico no pixel do alvo (a menos de 1 pixel) e vizinha suspeita a mais de 1 pixel (21"):** resolvido, a variação é da sua estrela. A ficha diz "pico no alvo; vizinha a N" não explica o sinal". Mencione a vizinha no comentário (a frase em inglês gerada pela página já faz isso).
+- **Pico deslocado de 1 pixel ou mais, a uma distância compatível com a de uma vizinha (diferença de até 1 pixel):** o sinal parece dela. A página bloqueia o envio. Não submeta.
+- **Vizinha a menos de 1 pixel do alvo, pico deslocado que não bate com nenhuma vizinha ou vizinhas que o Gaia não respondeu:** fica como atenção. O pixel não separa as duas estrelas, então olhe o mapa por pixel; se não der para distinguir, deixe a estrela para depois e comece pelas outras.
+
+Só há a distância do pico, não a direção, por isso "compatível" quer dizer que o pico está tão longe do alvo quanto a vizinha. Na ficha o resultado fica em `blend_veredito` e `blend_motivo`.
 
 ## 2. Criar o login no VSX
 
@@ -62,6 +64,6 @@ No comentário, escreva em inglês e em poucas linhas como achou a estrela: curv
 
 1. No app, página **Fichas**, marque **Enviada ao VSX** na estrela.
 2. O moderador responde por e-mail ou pelo próprio VSX. Se ele pedir ajuste, corrija e responda.
-3. Quando a estrela aparecer no catálogo, marque **Aceita no VSX** e anote o nome que ela recebeu.
+3. O aceite é marcado sozinho: ao abrir a página **Fichas**, o app consulta o VSX para cada estrela enviada e ainda não aceita. Quando aparece um objeto a até 10" da posição Gaia da ficha, a estrela vira **Aceita no VSX**, o nome que ela recebeu é preenchido e o app avisa "TIC X aceita no VSX como NOME". Se o VSX estiver fora do ar, marque à mão.
 
 Os detalhes de cada item (P ou 2P, faixa de magnitude, por que a amplitude do TESS) estão no checklist da seção 11 da [especificação](../especificacao.md).
