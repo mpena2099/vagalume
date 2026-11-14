@@ -52,7 +52,7 @@ Fases sequenciais que se comunicam por tabelas SQLite em `data/vagalume.db`. Cad
 | 6 | `checar_contaminacao` | Descarta sinais que podem vir de estrela vizinha | `candidatos` |
 | 7 | `triagem` | Gera uma figura por candidata: curva, curva dobrada em P e 2P, periodograma, campo TESS e mapa do sinal por pixel | `candidatos_fase7` |
 | revisão | `app/revisao.py` + `app/paginas/` | App local (Streamlit) para olhar cada candidata e marcar confirmar, dúvida ou descartar | `revisao_humana` |
-| 8 | `ficha_vsx` | Para as confirmadas, monta a ficha do VSX: fonte Gaia DR3, V estimada, período medido com todos os setores do TESS (com o erro e um alerta quando os setores não concordam), tipo sugerido, época do mínimo em BJD, amplitude e curva em fase, e refaz a busca no VizieR inteiro | `data/vsx/` |
+| 8 | `ficha_vsx` | Para as confirmadas, monta a ficha do VSX: fonte Gaia DR3, V estimada, período medido com todos os setores do TESS (com o erro e um alerta quando os setores não concordam), tipo sugerido, época do mínimo em BJD, amplitude e curva em fase, e refaz a busca no VizieR inteiro (com o VizieR de Estrasburgo fora, só numa lista de 25 catálogos de variáveis num espelho) | `data/vsx/` |
 
 O envio ao VSX é manual (não há API): veja o [passo a passo](#passo-a-passo). Tipo e período da ficha são sugestões; confira na curva em fase.
 
@@ -67,7 +67,7 @@ O que o projeto encontrou até agora, inclusive o que não deu certo:
 | Achado | Estágio | O que ensinou |
 |---|---|---|
 | Teste de sanidade: WASP-18 b, uma binária eclipsante destacada e uma de contato são redescobertas com o período a menos de 0,1% da referência | Feito a cada execução | A detecção de período funciona nos três tipos de sinal |
-| Setor 55 (Cygnus): 566 estrelas, 51 com sinal periódico, 19 sem variável catalogada a menos de 30", 14 candidatas | Em revisão visual | A checagem de estrelas vizinhas e a repetição em outros setores cortam a maior parte |
+| Setor 55 (Cygnus): 566 estrelas, 51 com sinal periódico, 19 sem variável catalogada a menos de 30", 14 candidatas | Revisadas: 4 confirmadas, 3 em dúvida e 7 descartadas; fichas do VSX das confirmadas prontas para conferir | A checagem de estrelas vizinhas e a repetição em outros setores cortam a maior parte |
 | Uma candidata, a TIC 64711184, já estava publicada como pulsante SPB (catálogo J/ApJS/268/16), fora das listas que o pipeline cruzava | Saiu da fila: o catálogo entrou no cruzamento | Daí veio a busca no VizieR inteiro antes da ficha do VSX, e os catálogos achados assim passaram a ser cruzados |
 
 ## Uso
