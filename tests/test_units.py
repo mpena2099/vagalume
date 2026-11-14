@@ -595,7 +595,7 @@ def test_marcos():
     csv = Path(tempfile.mkdtemp()) / "fichas.csv"
     conn = sqlite3.connect(":memory:")
     lista = dados.marcos(conn, csv)
-    assert [m["nome"] for m in lista] == ["Treino em dia", "Fila revisada", "Ficha pronta",
+    assert [m["nome"] for m in lista] == ["Treino (opcional)", "Fila revisada", "Ficha pronta",
                                           "Enviada ao VSX", "Aceita no VSX"]
     assert not any(m["feito"] for m in lista)
     assert lista[0]["detalhe"] == "faltam 20 respostas" and lista[1]["detalhe"] == "0 de 0"

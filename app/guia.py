@@ -20,7 +20,24 @@ LEITURA = ("**Como ler as curvas dobradas.** Cada ponto laranja é uma medida de
            "na linha. Período errado ou ruído: faixa espalhada e linha tremida.\n\n"
            "**O que decide.** Confirmar ou Descartar depende só dos painéis 1 (a curva em P "
            "tem forma clara que se repete?) e 2 (o sinal sai da estrela alvo?). A curva em 2P "
-           "fica para depois de confirmar: serve só para escolher o período da ficha do VSX.")
+           "serve para escolher o período da ficha do VSX: olhe antes de confirmar.")
+
+# tabela e dicas que ficavam num expander a parte na fila
+COMO_DECIDIR = """| O que você vê | Decisão |
+|---|---|
+| Curva dobrada limpa: os ciclos caem uns sobre os outros e a linha preta tem forma clara | segue para os outros itens |
+| Curva dobrada borrada, sem forma, ou formada por um ou dois eventos isolados | **Descartar** ou **Dúvida** |
+| Mapa de amplitude com o pico (x vermelho) sobre o alvo (+ verde) | a favor |
+| Pico do sinal em outro pixel, sobre outra estrela | **Descartar** (o sinal é da vizinha) |
+| Periodograma com um pico isolado e alto | a favor |
+| Período perto de 1 d, 13,7 d ou 6,85 d, ou saltos na curva nas bordas das lacunas | **Descartar** (sistemático do TESS) |
+| Links do VSX/SIMBAD mostram uma variável já catalogada com esse período a até ~2' | **Descartar** (já conhecida) |
+
+- Eclipses estreitos e planos fora do eclipse: binária EA. Variação contínua com mínimos diferentes: EB. Mínimos quase iguais e variação contínua: EW (contato).
+- Uma senoide com amplitude que muda de setor para setor costuma ser rotação (manchas).
+- **Confirmar** não é descoberta: quer dizer que passa no olho. Antes de submeter ao VSX, refaça a busca de variáveis conhecidas e confira o checklist da especificação (seção 11).
+- **Descartar** não apaga nada: a decisão fica gravada com a nota e dá para rever no filtro "Situação".
+"""
 
 # painel -> (titulo, pergunta que o revisor responde olhando a imagem)
 ROTEIRO = {
@@ -34,7 +51,7 @@ ROTEIRO = {
 }
 
 # depois de confirmar: a curva em 2P so escolhe o periodo (P ou 2P) da ficha do VSX
-PERIODO = ("Depois de confirmar: o período (P ou 2P)",
+PERIODO = ("Antes de confirmar: o período (P ou 2P)",
            "Dobrar em P é cortar a curva em pedaços de P dias e empilhar os pedaços. Dobrar em "
            "2P é cortar em pedaços duas vezes maiores: cada pedaço leva dois ciclos de P lado a "
            "lado. O programa costuma achar metade do período de uma binária. Na figura abaixo "
@@ -184,6 +201,8 @@ def mostrar_guia(st, treino: pd.DataFrame | None, aberto: bool, excluir: str | N
     """Expander com o roteiro e, se houver treino, os exemplos bom x ruim de cada painel."""
     with st.expander("O que procurar em cada painel (com exemplos)", expanded=aberto):
         st.markdown(LEITURA)
+        st.markdown("**Como decidir**")
+        st.markdown(COMO_DECIDIR)
         figs = exemplos(treino, excluir) if treino is not None and not treino.empty else {}
         secoes = [(painel, titulo, pergunta) for painel, (titulo, pergunta) in ROTEIRO.items()]
         for painel, titulo, pergunta in secoes + [("2p", *PERIODO)]:

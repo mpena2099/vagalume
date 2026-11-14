@@ -36,11 +36,11 @@ button[kind="primary"], button[kind="primary"] p {{ color: var(--vl-fundo) !impo
 [data-testid="stMetricValue"] {{ font-size: 1.15rem; }}
 .vl-cabecalho {{ display: flex; justify-content: space-between; align-items: center;
   gap: 1rem; background: var(--vl-cartao); border: 1px solid var(--vl-borda);
-  border-radius: .8rem; padding: .85rem 1.1rem; margin-bottom: .8rem; }}
-.vl-marca {{ color: var(--vl-destaque); font-size: 1.6rem; font-weight: 700; line-height: 1.2; }}
-.vl-tagline {{ color: var(--vl-suave); font-size: .82rem; }}
-.vl-subtitulo {{ font-size: 1rem; font-weight: 600; margin-top: .25rem; }}
-.vl-descricao {{ color: var(--vl-suave); font-size: .85rem; margin-top: .2rem; max-width: 46rem; }}
+  border-radius: .8rem; padding: .5rem 1rem; margin-bottom: .6rem; }}
+.vl-titulo {{ display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .8rem; }}
+.vl-marca {{ color: var(--vl-destaque); font-size: 1.3rem; font-weight: 700; line-height: 1.2; }}
+.vl-subtitulo {{ font-size: .95rem; font-weight: 600; }}
+.vl-descricao {{ color: var(--vl-suave); font-size: .8rem; margin-top: .1rem; }}
 .vl-progresso {{ min-width: 170px; text-align: right; }}
 /* celular: marca e descricao em cima, progresso embaixo, cada um com a largura toda */
 @media (max-width: 640px) {{
@@ -75,6 +75,9 @@ button[kind="primary"], button[kind="primary"] p {{ color: var(--vl-fundo) !impo
 .vl-etapa + .vl-etapa::before {{ content: ""; position: absolute; top: .36rem; left: -50%;
   width: 100%; height: 2px; background: var(--vl-borda); }}
 .vl-etapa.feito::before {{ background: var(--vl-destaque); }}
+.vl-etapa.opcional {{ opacity: .75; }}
+.vl-etapa.opcional .vl-ponto {{ border-style: dashed; }}
+.vl-etapa.opcional + .vl-etapa::before {{ display: none; }}
 .vl-ponto {{ width: .72rem; height: .72rem; border-radius: 50%; margin: 0 auto .3rem;
   border: 2px solid var(--vl-suave); position: relative; z-index: 1; }}
 .vl-etapa.feito .vl-ponto {{ background: var(--vl-destaque); border-color: var(--vl-destaque); }}
@@ -100,9 +103,8 @@ def cabecalho(subtitulo: str, progresso: tuple[float, int] | None = None,
                  f'<span style="width:{pct:.1f}%"></span></div></div>')
     st.markdown(
         f'<div class="vl-cabecalho"><div>'
-        f'<div class="vl-marca">{ICON} {PROJECT}</div>'
-        f'<div class="vl-tagline">{html.escape(TAGLINE)}</div>'
-        f'<div class="vl-subtitulo">{html.escape(subtitulo)}</div>'
+        f'<div class="vl-titulo"><span class="vl-marca">{ICON} {PROJECT}</span>'
+        f'<span class="vl-subtitulo">{html.escape(subtitulo)}</span></div>'
         + (f'<div class="vl-descricao">{html.escape(descricao)}</div>' if descricao else "")
         + f'</div>{barra}</div>', unsafe_allow_html=True)
 
@@ -135,7 +137,8 @@ def checklist_html(itens: list[dict], sugestao: str) -> None:
 
 def trilha_html(marcos: list[dict]) -> None:
     etapas = "".join(
-        f'<div class="vl-etapa{" feito" if m["feito"] else ""}"><div class="vl-ponto"></div>'
+        f'<div class="vl-etapa{" feito" if m["feito"] else ""}'
+        f'{" opcional" if m.get("opcional") else ""}"><div class="vl-ponto"></div>'
         f'<div class="vl-etapa-nome">{html.escape(str(m["nome"]))}</div>'
         f'<div class="vl-etapa-detalhe">{html.escape(str(m["detalhe"]))}</div></div>'
         for m in marcos)

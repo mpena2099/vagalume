@@ -387,13 +387,15 @@ def sem_ficha(confirmadas: set[int], fichas_csv: Path) -> set[int]:
 
 
 def marcos(conn: sqlite3.Connection, fichas_csv: Path) -> list[dict]:
-    """Etapas do trabalho: acerto e avanco contam, confirmar candidata nao."""
+    """Etapas do trabalho: acerto e avanco contam, confirmar candidata nao. O treino e opcional
+    (`opcional`): fica a parte da sequencia."""
     r = resumo_treino(ler_tentativas(conn))
     n = r.get("respostas", 0)
     if n < 20:
-        treino = {"nome": "Treino em dia", "feito": False, "detalhe": f"faltam {20 - n} respostas"}
+        treino = {"nome": "Treino (opcional)", "feito": False, "opcional": True,
+                  "detalhe": f"faltam {20 - n} respostas"}
     else:
-        treino = {"nome": "Treino em dia", "feito": r["recentes"] >= 0.8,
+        treino = {"nome": "Treino (opcional)", "feito": r["recentes"] >= 0.8, "opcional": True,
                   "detalhe": f"{r['recentes']:.0%} nas últimas 20"}
 
     try:

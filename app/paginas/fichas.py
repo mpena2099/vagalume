@@ -10,12 +10,12 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd
 import streamlit as st
 
-from app import dados, estilo, vsx
+from app import dados, estilo, paineis, vsx
 from config import DEMO, SQLITE_PATH, VSX_DIR
 from src.ficha_vsx import ler_fichas
 
-DESCRICAO = ("O que copiar para o formulário do VSX em cada estrela confirmada, com a curva em "
-             "fase e os avisos da ficha. Marque aqui o envio e o aceite de cada uma.")
+DESCRICAO = "Confira cada estrela confirmada, copie os campos no VSX e marque o envio."
+FILTROS = ["A enviar", "Todas", "Enviadas", "Aceitas"]
 GUIA_VSX = "https://github.com/mpena2099/vagalume/blob/main/docs/submeter_vsx.md"
 
 
@@ -45,6 +45,24 @@ def salvar_envio(tic: int, origem: str):
     with conectar() as conn:
         dados.marcar_envio(conn, tic, enviada=enviada, aceita=aceita,
                            nome_vsx=st.session_state.get(f"nome_{tic}", ""))
+        envios = dados.ler_envios(conn)
+    if origem == "env" and enviada:
+        # segue para a proxima estrela ainda nao enviada
+        ficha_aberta(proxima_a_enviar(tic, set(envios.loc[envios["enviada_em"].notna(), "tic"])))
+
+
+def ficha_aberta(tic: int | None):
+    """Abre a estrela na pagina; a tabela volta ao estado sem selecao."""
+    if tic is not None:
+        st.session_state["ficha_sel"] = tic
+        st.session_state["ficha_tab_n"] = st.session_state.get("ficha_tab_n", 0) + 1
+
+
+def proxima_a_enviar(atual: int, enviadas: set[int]) -> int | None:
+    """Proxima estrela (depois da atual, dando a volta) que ainda nao foi enviada."""
+    tics = sorted(st.session_state.get("ficha_tics", []))
+    depois = [t for t in tics if t > atual] + [t for t in tics if t < atual]
+    return next((t for t in depois if t not in enviadas), None)
 
 
 def _fmt(valor, formato: str) -> str:
@@ -84,10 +102,6 @@ def campos(f: dict, tipo_final: str | None = None) -> list[tuple[str, str, str]]
     setores = f.get("setores_usados") or f.get("setores")
     if setores:
         itens.append(("Setores TESS", setores, "TESS QLP"))
-    if "vizier_variaveis" in f:
-        itens.append(('VizieR a 30"', f["vizier_variaveis"], ""))
-    if "suspeito_blend" in f:
-        itens.append(("Suspeito de blend", "sim" if f["suspeito_blend"] else "não", ""))
     return itens
 
 
@@ -97,6 +111,15 @@ if DEMO:
 ICONES = {"ok": "✅", "atencao": "⚠️", "bloqueia": "❌"}
 
 estilo.cabecalho("Fichas do VSX", descricao=DESCRICAO)
+
+try:
+    with conectar() as conn:
+        _cand = dados.carregar_candidatos(conn)
+    confirmadas = set(_cand.loc[_cand["decisao"] == "confirmado", "tic"].astype(int))
+except Exception:
+    confirmadas = set()
+paineis.painel_ficha_pagina(confirmadas)
+
 with st.expander("Login e envio no VSX"):
     st.markdown(
         "**Login no VSX, uma vez:** "
@@ -107,8 +130,8 @@ with st.expander("Login e envio no VSX"):
 caminho = VSX_DIR / "fichas.csv"
 fichas = ler_fichas(caminho)
 if not fichas:
-    st.info("Nenhuma ficha ainda. Na página **Revisão**, depois de revisar a fila, use o botão "
-            "**Gerar fichas do VSX**. Pelo terminal, na pasta do projeto, o mesmo comando é "
+    st.info("Nenhuma ficha ainda. Confirme candidatas na página **Revisão** e use **Gerar fichas "
+            "do VSX** acima. Pelo terminal, na pasta do projeto, o mesmo comando é "
             "`python -u src/ficha_vsx.py` (`--duvidas` inclui as dúvidas).")
     st.stop()
 
@@ -120,6 +143,8 @@ except Exception as e:
     st.error(f"Não consegui ler os envios em {SQLITE_PATH}: {e}")
     envios = pd.DataFrame(columns=["tic", "enviada_em", "aceita_em", "nome_vsx", "tipo_final"])
 por_tic = envios.set_index("tic").to_dict("index") if not envios.empty else {}
+tics = sorted(fichas)
+st.session_state["ficha_tics"] = tics
 
 
 def vsx_da_ficha(f: dict) -> tuple[list[dict] | None, bool]:
@@ -140,57 +165,119 @@ def anexo(rotulo: str, caminho_img: Path, nome: str, chave: str):
         st.caption(f"{rotulo}: arquivo não encontrado ({caminho_img.name}).")
 
 
-def situacao(tic: int) -> tuple[list[dict] | None, list[tuple[str, str]], bool]:
-    """(achados do VSX, pendencias, pronta) da estrela, com o tipo atual salvo."""
-    f, e = fichas[tic], por_tic.get(tic, {})
-    achados, falhou = vsx_da_ficha(f)
-    if f"tipo_{tic}" not in st.session_state:
-        sugerido = str(f.get("tipo_sugerido") or "").strip()
-        st.session_state[f"tipo_{tic}"] = (e.get("tipo_final") or None) or (
-            sugerido if sugerido in vsx.TIPOS_VSX else None)
-    pend = vsx.pendencias(f, st.session_state.get(f"tipo_{tic}"), achados)
-    if falhou:
-        pend.append(("atencao", "VSX não respondeu agora"))
-    return achados, pend, not any(n == "bloqueia" for n, _ in pend)
+def tipo_inicial(tic: int) -> str | None:
+    """Tipo salvo ou, sem ele, a sugestao da ficha quando e um tipo unico do VSX."""
+    sugerido = str(fichas[tic].get("tipo_sugerido") or "").strip()
+    salvo = por_tic.get(tic, {}).get("tipo_final")
+    return (salvo if pd.notna(salvo) and salvo else None) or (
+        sugerido if sugerido in vsx.TIPOS_VSX else None)
 
 
-situacoes = {tic: situacao(tic) for tic in sorted(fichas)}
+def tipo_de(tic: int) -> str | None:
+    return st.session_state[f"tipo_{tic}"] if f"tipo_{tic}" in st.session_state else tipo_inicial(tic)
 
 
-def rotulo_estrela(tic: int) -> str:
-    return f"{tic} ✅ pronta" if situacoes[tic][2] else f"{tic} ⚠️ falta resolver"
+def situacao_local(tic: int) -> str:
+    """Situacao so com dados locais (ficha, tipo, envio): nenhuma consulta de rede."""
+    e = por_tic.get(tic, {})
+    if pd.notna(e.get("aceita_em")) and e.get("aceita_em"):
+        return "aceita"
+    if pd.notna(e.get("enviada_em")) and e.get("enviada_em"):
+        return "enviada"
+    pend = vsx.pendencias(fichas[tic], tipo_de(tic), [])
+    return "falta resolver" if any(n == "bloqueia" for n, _ in pend) else "pronta"
 
 
-tics = list(situacoes)
+def vizinha(lista: list[int], atual: int, passo: int) -> int | None:
+    """Estrela anterior (passo -1) ou seguinte (+1) na lista, dando a volta."""
+    if not lista:
+        return None
+    if atual not in lista:
+        return lista[0] if passo > 0 else lista[-1]
+    return lista[(lista.index(atual) + passo) % len(lista)]
+
+
+def andar(passo: int):
+    filtro = st.session_state.get("ficha_filtro") or "A enviar"
+    ficha_aberta(vizinha(grupos[filtro], st.session_state["ficha_sel"], passo))
+
+
+situacoes = {t: situacao_local(t) for t in tics}
+enviadas_ou_aceitas = {"enviada", "aceita"}
+grupos = {
+    "A enviar": [t for t in tics if situacoes[t] not in enviadas_ou_aceitas],
+    "Todas": tics,
+    "Enviadas": [t for t in tics if situacoes[t] == "enviada"],
+    "Aceitas": [t for t in tics if situacoes[t] == "aceita"],
+}
 if st.session_state.get("ficha_sel") not in tics:
-    st.session_state["ficha_sel"] = tics[0]
-st.segmented_control("Estrela", tics, key="ficha_sel", format_func=rotulo_estrela,
-                     selection_mode="single", label_visibility="collapsed")
-tic = st.session_state.get("ficha_sel") or tics[0]
+    st.session_state["ficha_sel"] = (grupos["A enviar"] or tics)[0]
 
+# ---------------------------------------------------------------- lista
+topo = st.columns([4, 1, 1], vertical_alignment="bottom")
+filtro = topo[0].segmented_control(
+    "Mostrar", FILTROS, key="ficha_filtro", default="A enviar", selection_mode="single",
+    format_func=lambda k: f"{k} ({len(grupos[k])})") or "A enviar"
+visiveis = grupos[filtro]
+topo[1].button("Anterior", icon=":material/skip_previous:", on_click=andar, args=(-1,),
+               disabled=not visiveis, width="stretch")
+topo[2].button("Próxima", icon=":material/skip_next:", on_click=andar, args=(1,),
+               disabled=not visiveis, width="stretch")
+if visiveis:
+    aberta = st.session_state.get("ficha_sel")
+    tabela = pd.DataFrame({
+        " ": ["▶" if t == aberta else "" for t in visiveis],
+        "TIC": visiveis,
+        "Tipo": [tipo_de(t) or "?" for t in visiveis],
+        "Situação": [situacoes[t].capitalize() for t in visiveis],
+        "P (d)": [fichas[t].get("periodo_d") for t in visiveis],
+        "V": [fichas[t].get("v_estimada") for t in visiveis],
+    })
+    chave_tab = f"ficha_tabela_{filtro}_{st.session_state.get('ficha_tab_n', 0)}"
+    destaque = tabela.style.apply(
+        lambda linha: ["background-color: rgba(255, 196, 0, 0.18); font-weight: 600"
+                       if linha["TIC"] == aberta else "" for _ in linha], axis=1)
+    evento = st.dataframe(
+        destaque, hide_index=True, width="stretch", height=min(36 * (len(visiveis) + 1) + 3, 215),
+        on_select="rerun", selection_mode="single-row", key=chave_tab,
+        column_config={" ": st.column_config.TextColumn(width=30),
+                       "TIC": st.column_config.NumberColumn(format="%d"),
+                       "P (d)": st.column_config.NumberColumn(format="%.5f"),
+                       "V": st.column_config.NumberColumn(format="%.2f")})
+    if evento.selection.rows:
+        escolhida = visiveis[evento.selection.rows[0]]
+        if st.session_state.get("ficha_tab_ult") != (chave_tab, escolhida):
+            st.session_state["ficha_tab_ult"] = (chave_tab, escolhida)
+            st.session_state["ficha_sel"] = escolhida
+            st.rerun()
+else:
+    st.caption("Nenhuma estrela nesse filtro.")
+
+tic = st.session_state["ficha_sel"]
 f = fichas[tic]
 e = por_tic.get(tic, {})
-achados, pend, pronta = situacoes[tic]
-tipo_atual = st.session_state.get(f"tipo_{tic}")
+st.session_state.setdefault(f"tipo_{tic}", tipo_inicial(tic))
+achados, falhou = vsx_da_ficha(f)
+pend = vsx.pendencias(f, st.session_state.get(f"tipo_{tic}"), achados)
+if falhou:
+    pend.append(("atencao", "VSX não respondeu agora"))
+abertas = [(n, t) for n, t in pend if n != "ok"]
+bloqueadas = [(n, t) for n, t in abertas if n == "bloqueia"] + [
+    (n, t) for n, t in abertas if n != "bloqueia"]
 
 figura = VSX_DIR / f"{tic}_fase.png"
 triagem = Path(f["figura_triagem"]) if f.get("figura_triagem") else None
 if triagem is not None and not triagem.is_absolute():
     triagem = ROOT / triagem
 
-st.subheader(f"TIC {tic}" + (f" · {f['decisao'].capitalize()}" if f.get("decisao") else ""))
-aba_resumo, aba_copiar, aba_detalhes, aba_envio = st.tabs(
-    ["Resumo", "Copiar", "Detalhes", "Envio"])
+st.subheader(f"TIC {tic}" + (f" · {f['decisao'].capitalize()}" if f.get("decisao") else "")
+             + f" · {situacoes[tic].capitalize()}")
+aba_conferir, aba_enviar = st.tabs(["Conferir", "Enviar"])
 
-with aba_resumo:
-    if pronta:
-        st.badge("Pronta para enviar", color="green")
-    else:
-        st.badge("Falta resolver", color="orange")
-    prox = next((t for n, t in pend if n == "bloqueia"), None) or next(
-        (t for n, t in pend if n == "atencao"), None)
-    st.info(f"**Próximo passo:** {prox}" if prox else "**Próximo passo:** Copie os campos na aba Copiar.")
-    for nivel, texto in pend:
+with aba_conferir:
+    st.info(f"**Próximo passo:** {bloqueadas[0][1]}" if bloqueadas
+            else "**Próximo passo:** Tudo certo: siga para a aba Enviar.")
+    for nivel, texto in bloqueadas[1:]:
         st.markdown(f"{ICONES[nivel]} {texto}")
     if figura.exists():
         st.image(figura, width="stretch")
@@ -200,11 +287,38 @@ with aba_resumo:
                  placeholder="Escolha pela forma da curva",
                  format_func=lambda t: f"{t}: {vsx.TIPOS_VSX[t]}",
                  on_change=salvar_tipo, args=(tic,))
-    if f.get("motivo_tipo"):
-        st.caption(f["motivo_tipo"])
-    tipo_atual = st.session_state.get(f"tipo_{tic}")
+    with st.expander("Detalhes"):
+        if f.get("motivo_tipo"):
+            st.markdown("**Motivo do tipo**")
+            st.write(f["motivo_tipo"])
+        st.markdown("**Achados no VSX**")
+        if achados:
+            for a in achados:
+                st.markdown(f"- [{a['nome']}]({a['url']}) · {a['tipo'] or 'tipo ?'} · "
+                            f"{a['dist_arcsec']:.0f}\" · P {a['periodo'] or '?'}")
+        else:
+            st.caption("Nenhum achado no VSX a até 60\".")
+        if st.button("Conferir no VSX de novo", key=f"vsxbtn_{tic}"):
+            consultar.clear()
+            st.rerun()
+        st.markdown("**Mapa por pixel e curvas da triagem**")
+        if triagem is not None and triagem.exists():
+            st.image(triagem, width="stretch")
+        else:
+            st.caption("Figura da triagem não encontrada.")
+        if f.get("avisos"):
+            st.markdown("**Avisos da ficha**")
+            st.write(f["avisos"])
+        if "suspeito_blend" in f:
+            st.markdown("**Blend**")
+            st.write("Suspeito: vizinha Gaia brilhante perto." if f["suspeito_blend"]
+                     else "Sem vizinha Gaia brilhante suspeita.")
+        if f.get("vizier_variaveis"):
+            st.markdown('**VizieR a 30"**')
+            st.write(f["vizier_variaveis"])
 
-with aba_copiar:
+with aba_enviar:
+    tipo_atual = st.session_state.get(f"tipo_{tic}")
     st.markdown("**Campos do New Star Wizard**")
     colunas = st.columns(2)
     for i, (rotulo, valor, ajuda) in enumerate(campos(f, tipo_atual)):
@@ -222,37 +336,10 @@ with aba_copiar:
     with c2:
         anexo("Baixar figura da triagem", triagem or Path("triagem"), f"TIC{tic}_triagem.png",
               f"dl_tri_{tic}")
-
-with aba_detalhes:
-    st.markdown("**Mapa por pixel e curvas da triagem**")
-    if triagem is not None and triagem.exists():
-        st.image(triagem, width="stretch")
-    else:
-        st.caption("Figura da triagem não encontrada.")
-    st.markdown("**Achados no VSX**")
-    if achados:
-        for a in achados:
-            st.markdown(f"- [{a['nome']}]({a['url']}) · {a['tipo'] or 'tipo ?'} · "
-                        f"{a['dist_arcsec']:.0f}\" · P {a['periodo'] or '?'}")
-    else:
-        st.caption("Nenhum achado no VSX a até 60\".")
-    if st.button("Conferir no VSX de novo", key=f"vsxbtn_{tic}"):
-        consultar.clear()
-        st.rerun()
-    if f.get("avisos"):
-        st.markdown("**Avisos da ficha**")
-        st.write(f["avisos"])
-    if f.get("motivo_tipo"):
-        st.markdown("**Motivo do tipo**")
-        st.write(f["motivo_tipo"])
-    if f.get("vizier_variaveis"):
-        st.markdown('**VizieR a 30"**')
-        st.write(f["vizier_variaveis"])
-
-with aba_envio:
-    st.session_state.setdefault(f"env_{tic}", bool(e.get("enviada_em")))
-    st.session_state.setdefault(f"ace_{tic}", bool(e.get("aceita_em")))
-    st.session_state.setdefault(f"nome_{tic}", e.get("nome_vsx") or "")
+    st.divider()
+    st.session_state.setdefault(f"env_{tic}", bool(pd.notna(e.get("enviada_em")) and e.get("enviada_em")))
+    st.session_state.setdefault(f"ace_{tic}", bool(pd.notna(e.get("aceita_em")) and e.get("aceita_em")))
+    st.session_state.setdefault(f"nome_{tic}", e.get("nome_vsx") if pd.notna(e.get("nome_vsx")) else "")
     c1, c2, c3 = st.columns([1, 1, 2], vertical_alignment="center")
     c1.checkbox("Enviada ao VSX", key=f"env_{tic}",
                 on_change=salvar_envio, args=(tic, "env"))
@@ -261,6 +348,6 @@ with aba_envio:
                 disabled=not st.session_state[f"env_{tic}"])
     c3.text_input("Nome no VSX", key=f"nome_{tic}",
                   on_change=salvar_envio, args=(tic, "nome"))
-    if e.get("enviada_em"):
+    if pd.notna(e.get("enviada_em")) and e.get("enviada_em"):
         st.caption(f"Enviada em {e['enviada_em']}"
-                   + (f" · aceita em {e['aceita_em']}" if e.get("aceita_em") else ""))
+                   + (f" · aceita em {e['aceita_em']}" if pd.notna(e.get("aceita_em")) and e.get("aceita_em") else ""))
