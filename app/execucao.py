@@ -163,3 +163,19 @@ def estado_ficha(log: str) -> dict:
             e["fim"] = x
     e["terminou"] = bool(e["fim"])
     return e
+
+
+# consulta de verdade: com o CDS fora, a pagina inicial responde 200 e as consultas 404
+SONDA_VIZIER = "https://vizier.cds.unistra.fr/viz-bin/votable?-source=I/239/hip_main&-out.max=1"
+
+
+def vizier_no_ar(prazo_s: float = 20.0) -> bool:
+    """O VizieR de Estrasburgo responde consultas? Sem ele, a busca no VizieR inteiro da
+    Fase 8 falha: o espelho do IDIA corta essa busca (erro 502) depois de ~2 min."""
+    import requests
+    try:
+        r = requests.get(SONDA_VIZIER, timeout=prazo_s)
+        return r.status_code == 200 and "<TABLE" in r.text
+    except requests.RequestException:
+        return False
+

@@ -1,6 +1,7 @@
 """Revisao visual das candidatas da Fase 7 (pagina do app)."""
 
 import sqlite3
+from datetime import datetime
 import sys
 from pathlib import Path
 
@@ -180,6 +181,23 @@ def progresso_ficha():
                            "novo retoma.")
 
 
+@st.cache_data(ttl=1800, show_spinner="Testando o VizieR...")
+def vizier_no_ar() -> tuple[bool, str]:
+    return execucao.vizier_no_ar(), datetime.now().strftime("%H:%M")
+
+
+def aviso_vizier():
+    """Ficha incompleta depende do VizieR de Estrasburgo: diz se ele voltou."""
+    no_ar, hora = vizier_no_ar()
+    if no_ar:
+        st.success(f"O VizieR está respondendo (testado às {hora}): gere as fichas de novo para "
+                   "completar a busca que faltou.")
+    else:
+        st.info(f"O VizieR de Estrasburgo ainda está fora do ar (testado às {hora}; o app testa "
+                "de novo a cada 30 min). Gerar agora deve falhar de novo na mesma busca.")
+        st.button("Testar agora", on_click=vizier_no_ar.clear, key="vizier_testar")
+
+
 def botao_fichas(sem_ficha: int):
     if execucao.rodando():
         st.button("Gerar fichas do VSX", disabled=True, key="fichas_gerar_espera")
@@ -201,7 +219,7 @@ def botao_fichas(sem_ficha: int):
     st.code(execucao.FICHA_COMANDO, language="bash")
 
 
-def painel_ficha(sem_ficha: int):
+def painel_ficha(sem_ficha: int, incompletas: int = 0):
     """Fase 8 pelo app: progresso se roda, resultado da ultima e botao quando falta ficha."""
     if execucao.rodando_ficha():
         progresso_ficha()
@@ -226,8 +244,10 @@ def painel_ficha(sem_ficha: int):
             st.success(f"Geração terminada: as {total} fichas estão prontas na página Fichas.")
         st.page_link("paginas/fichas.py", label="Abrir as fichas", icon=":material/menu_book:")
         st.button("Ok", on_click=esquecer_ficha, key="ficha_fim_ok")
-    if sem_ficha:
-        botao_fichas(sem_ficha)
+    if incompletas:
+        aviso_vizier()
+    if sem_ficha + incompletas:
+        botao_fichas(sem_ficha + incompletas)
 
 
 def painel_busca(pendentes: int, sem_ficha: int = 0, incompletas: int = 0):
@@ -238,7 +258,7 @@ def painel_busca(pendentes: int, sem_ficha: int = 0, incompletas: int = 0):
             botao_fichas(sem_ficha + incompletas)
         return
     if execucao.rodando_ficha():
-        painel_ficha(sem_ficha + incompletas)
+        painel_ficha(sem_ficha, incompletas)
         return
     e = execucao.estado(execucao.ler_log())
     if e["fim_da_grade"]:
@@ -262,7 +282,7 @@ def painel_busca(pendentes: int, sem_ficha: int = 0, incompletas: int = 0):
         elif incompletas and not execucao.estado_ficha(execucao.ler_log_ficha())["terminou"]:
             st.markdown(f"**{incompletas} ficha(s) do VSX incompleta(s)** (veja os avisos na "
                         "página Fichas). Gerar de novo refaz só a busca que faltou.")
-        painel_ficha(sem_ficha + incompletas)
+        painel_ficha(sem_ficha, incompletas)
         botao_buscar("buscar_fim")
 
 

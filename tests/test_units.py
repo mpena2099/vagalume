@@ -443,6 +443,22 @@ def test_estado_ficha():
     assert estado_ficha("Fichas canceladas pelo app.")["cancelada"]
 
 
+def test_vizier_no_ar():
+    from unittest import mock
+    import requests
+    from app import execucao
+    resp = lambda codigo, texto: mock.Mock(status_code=codigo, text=texto)
+    with mock.patch("requests.get", return_value=resp(200, "<VOTABLE><TABLE>")):
+        assert execucao.vizier_no_ar()
+    # CDS fora: 404 nas consultas, ou 200 com pagina de aviso
+    with mock.patch("requests.get", return_value=resp(404, "")):
+        assert not execucao.vizier_no_ar()
+    with mock.patch("requests.get", return_value=resp(200, "<html>aviso</html>")):
+        assert not execucao.vizier_no_ar()
+    with mock.patch("requests.get", side_effect=requests.ConnectionError):
+        assert not execucao.vizier_no_ar()
+
+
 def test_envios():
     conn = sqlite3.connect(":memory:")
     assert dados.ler_envios(conn).empty
