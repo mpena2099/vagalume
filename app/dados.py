@@ -266,6 +266,85 @@ def ler_marcos_manuais(conn: sqlite3.Connection) -> set[str]:
     return {r[0] for r in conn.execute("SELECT nome FROM marcos_manuais")}
 
 
+# Envio por estrela: nunca to_sql replace, senao uma rodada apagaria as marcacoes.
+_SCHEMA_ENVIO = """
+CREATE TABLE IF NOT EXISTS envio_vsx (
+    tic INTEGER PRIMARY KEY,
+    enviada_em TEXT,
+    aceita_em TEXT,
+    nome_vsx TEXT
+)"""
+
+
+def ler_envios(conn: sqlite3.Connection) -> pd.DataFrame:
+    conn.execute(_SCHEMA_ENVIO)
+    return pd.read_sql("SELECT tic, enviada_em, aceita_em, nome_vsx FROM envio_vsx", conn)
+
+
+def marcar_envio(conn: sqlite3.Connection, tic: int, enviada: bool | None = None,
+                 aceita: bool | None = None, nome_vsx: str | None = None) -> None:
+    """Marca envio/aceite da estrela. Marcar grava a data, desmarcar grava NULL;
+    aceita implica enviada."""
+    conn.execute(_SCHEMA_ENVIO)
+    tic = int(tic)
+    linha = conn.execute("SELECT enviada_em, aceita_em, nome_vsx FROM envio_vsx WHERE tic = ?",
+                         (tic,)).fetchone()
+    enviada_em, aceita_em, nome = linha if linha else (None, None, None)
+    agora = datetime.now().isoformat(timespec="seconds")
+    if enviada is not None:
+        enviada_em = (enviada_em or agora) if enviada else None
+        if not enviada:
+            aceita_em = None
+    if aceita is not None:
+        if aceita:
+            aceita_em = aceita_em or agora
+            enviada_em = enviada_em or agora
+        else:
+            aceita_em = None
+    if nome_vsx is not None:
+        nome = nome_vsx.strip() or None
+    conn.execute("INSERT OR REPLACE INTO envio_vsx VALUES (?, ?, ?, ?)",
+                 (tic, enviada_em, aceita_em, nome))
+    conn.commit()
+
+
+def migrar_envios(conn: sqlite3.Connection, fichas_csv: Path) -> int:
+    """Leva as marcacoes globais antigas para envio_vsx, so nas confirmadas com ficha que
+    ainda nao tem linha. Nao apaga marcos_manuais e pode rodar de novo sem duplicar."""
+    conn.execute(_SCHEMA_MARCOS)
+    antigos = dict(conn.execute("SELECT nome, feito_em FROM marcos_manuais WHERE nome IN (?, ?)",
+                                MARCOS_MANUAIS))
+    if not antigos:
+        return 0
+    try:
+        cand = carregar_candidatos(conn)
+        feitas = set(pd.read_csv(fichas_csv)["tic"].astype(int))
+    except Exception:
+        return 0
+    confirmadas = set(cand.loc[cand["decisao"] == "confirmado", "tic"].astype(int))
+    conn.execute(_SCHEMA_ENVIO)
+    existentes = {r[0] for r in conn.execute("SELECT tic FROM envio_vsx")}
+    enviada_em = antigos.get("Enviada ao VSX")
+    aceita_em = antigos.get("Aceita no VSX")
+    enviada_em = enviada_em or aceita_em
+    novos = 0
+    for tic in sorted(confirmadas & (feitas - existentes)):
+        conn.execute("INSERT INTO envio_vsx VALUES (?, ?, ?, ?)",
+                     (tic, enviada_em, aceita_em, None))
+        novos += 1
+    conn.commit()
+    return novos
+
+
+def fichas_com_aviso(fichas_csv: Path) -> set[int]:
+    """Fichas incompletas (com avisos): rodar a Fase 8 de novo refaz so a busca que faltou."""
+    try:
+        df = pd.read_csv(fichas_csv, dtype=str, keep_default_na=False)
+        return set(df.loc[df["avisos"].str.strip() != "", "tic"].astype(int))
+    except Exception:
+        return set()
+
+
 def sem_ficha(confirmadas: set[int], fichas_csv: Path) -> set[int]:
     """Confirmadas que ainda nao estao no fichas.csv da Fase 8."""
     try:
@@ -303,11 +382,17 @@ def marcos(conn: sqlite3.Connection, fichas_csv: Path) -> list[dict]:
         detalhe_ficha = f"{len(confirmadas)} confirmada{'s' if len(confirmadas) != 1 else ''}"
     ficha = {"nome": "Ficha pronta", "feito": bool(confirmadas) and not faltam, "detalhe": detalhe_ficha}
 
-    manuais = ler_marcos_manuais(conn)
-    return [treino, fila, ficha] + [
-        {"nome": nome, "feito": nome in manuais,
-         "detalhe": "marcado" if nome in manuais else "marque quando acontecer"}
-        for nome in MARCOS_MANUAIS]
+    envios = ler_envios(conn)
+    enviadas = set(envios.loc[envios["enviada_em"].notna(), "tic"].astype(int))
+    aceitas = set(envios.loc[envios["aceita_em"].notna(), "tic"].astype(int))
+
+    def envio(nome: str, marcadas: set[int]) -> dict:
+        feitas = len(confirmadas & marcadas)
+        return {"nome": nome, "feito": bool(confirmadas) and feitas == len(confirmadas),
+                "detalhe": f"{feitas} de {len(confirmadas)}"}
+
+    return [treino, fila, ficha,
+            envio("Enviada ao VSX", enviadas), envio("Aceita no VSX", aceitas)]
 
 
 def nivel_treino(h: pd.DataFrame) -> tuple[str, str]:

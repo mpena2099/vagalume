@@ -1,4 +1,5 @@
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -412,6 +413,91 @@ def test_estado_execucao():
     assert not e["cancelada"] and estado(log + "\nBusca cancelada pelo app.\n")["cancelada"]
 
 
+def test_estado_ficha():
+    from app.execucao import estado_ficha
+    vazio = estado_ficha("")
+    assert vazio["progresso"] is None and vazio["tic"] is None and vazio["etapa"] is None
+    assert vazio["erro"] is None and vazio["fim"] is None and not vazio["terminou"]
+
+    log = """Fase 8: fichas do VSX de 4 estrelas (confirmados). Leva alguns minutos por estrela.
+[1/4] TIC 111: ficha já pronta, mantida
+
+[2/4] TIC 222
+  baixando 1 setor do TESS...
+    setor 55 (1/1)
+  medindo o período
+"""
+    e = estado_ficha(log)
+    assert e["progresso"] == (2, 4) and e["tic"] == 222
+    assert e["etapa"] == "medindo o período"
+
+    com_erro = log + 'Traceback (most recent call last):\n  File "x", line 1\nValueError: boom\n'
+    e = estado_ficha(com_erro)
+    assert "ValueError: boom" in e["erro"]
+
+    fim = ("4 fichas em data/vsx/fichas.csv (curvas em data/vsx/<tic>_fase.png): 2 mantidas, "
+           "1 completada, 1 nova.")
+    e = estado_ficha(log + fim + "\n")
+    assert e["terminou"] and e["fim"] == fim
+    assert not estado_ficha("Busca cancelada pelo app.")["cancelada"]
+    assert estado_ficha("Fichas canceladas pelo app.")["cancelada"]
+
+
+def test_envios():
+    conn = sqlite3.connect(":memory:")
+    assert dados.ler_envios(conn).empty
+    dados.marcar_envio(conn, 7, enviada=True, nome_vsx="V123")
+    e = dados.ler_envios(conn).set_index("tic").loc[7]
+    assert isinstance(e["enviada_em"], str) and pd.isna(e["aceita_em"])
+    assert e["nome_vsx"] == "V123"
+    enviada_em = e["enviada_em"]
+    # aceita implica enviada, sem refazer a data do envio
+    dados.marcar_envio(conn, 7, aceita=True)
+    e = dados.ler_envios(conn).set_index("tic").loc[7]
+    assert e["enviada_em"] == enviada_em and isinstance(e["aceita_em"], str)
+    # desmarcar grava NULL
+    dados.marcar_envio(conn, 7, enviada=False, aceita=False, nome_vsx="")
+    e = dados.ler_envios(conn).set_index("tic").loc[7]
+    assert pd.isna(e["enviada_em"]) and pd.isna(e["aceita_em"]) and pd.isna(e["nome_vsx"])
+    # aceite numa estrela ainda sem envio ja grava as duas datas
+    dados.marcar_envio(conn, 8, aceita=True)
+    e = dados.ler_envios(conn).set_index("tic").loc[8]
+    assert isinstance(e["enviada_em"], str) and isinstance(e["aceita_em"], str)
+    # remarcar (a pagina manda enviada=True a cada mudanca) nao troca as datas
+    antes = dados.ler_envios(conn).set_index("tic").loc[8].to_dict()
+    dados.marcar_envio(conn, 8, enviada=True, aceita=True, nome_vsx="X")
+    depois = dados.ler_envios(conn).set_index("tic").loc[8]
+    assert depois["enviada_em"] == antes["enviada_em"] and depois["aceita_em"] == antes["aceita_em"]
+    with tempfile.TemporaryDirectory() as d:
+        csv = Path(d) / "fichas.csv"
+        assert dados.fichas_com_aviso(csv) == set()
+        pd.DataFrame({"tic": [1, 2], "avisos": ["Busca no VizieR...", ""]}).to_csv(csv, index=False)
+        assert dados.fichas_com_aviso(csv) == {1}
+
+
+def test_migrar_envios():
+    import tempfile
+    csv = Path(tempfile.mkdtemp()) / "fichas.csv"
+    conn = sqlite3.connect(":memory:")
+    pd.DataFrame({"tic": [1, 2, 3, 4], "periodo_d": [1.0, 2.0, 3.0, 4.0]}).to_sql(
+        "candidatos_fase7", conn)
+    for tic, decisao in [(1, "confirmado"), (2, "confirmado"), (3, "confirmado"),
+                         (4, "descartado")]:
+        dados.salvar_revisao(conn, tic, decisao)
+    pd.DataFrame({"tic": [1, 2]}).to_csv(csv, index=False)
+    dados.marcar(conn, "Enviada ao VSX", True)
+    dados.marcar(conn, "Aceita no VSX", True)
+    assert dados.migrar_envios(conn, csv) == 2
+    e = dados.ler_envios(conn).set_index("tic")
+    assert set(e.index) == {1, 2}  # a 3 nao tem ficha e a 4 nao foi confirmada
+    assert isinstance(e.loc[1, "enviada_em"], str) and isinstance(e.loc[1, "aceita_em"], str)
+    antes = e[["enviada_em", "aceita_em"]].copy()
+    assert dados.migrar_envios(conn, csv) == 0  # nao duplica
+    depois = dados.ler_envios(conn).set_index("tic")[["enviada_em", "aceita_em"]]
+    assert depois.equals(antes)
+    assert dados.ler_marcos_manuais(conn) == {"Enviada ao VSX", "Aceita no VSX"}
+
+
 def test_com_prazo():
     import time
     from src.util import com_prazo
@@ -464,22 +550,35 @@ def test_marcos():
     assert not any(m["feito"] for m in lista)
     assert lista[0]["detalhe"] == "faltam 20 respostas" and lista[1]["detalhe"] == "0 de 0"
 
-    pd.DataFrame({"tic": [1, 2], "periodo_d": [1.0, 2.0]}).to_sql("candidatos_fase7", conn)
-    dados.salvar_revisao(conn, 1, "confirmado")
-    dados.salvar_revisao(conn, 2, "descartado")
+    assert lista[3]["detalhe"] == "0 de 0" and lista[4]["detalhe"] == "0 de 0"
+
+    pd.DataFrame({"tic": [1, 2, 3, 4], "periodo_d": [1.0, 2.0, 3.0, 4.0]}).to_sql(
+        "candidatos_fase7", conn)
+    for tic in (1, 2, 3, 4):
+        dados.salvar_revisao(conn, tic, "confirmado")
     for i in range(20):
         dados.salvar_tentativa(conn, str(i), "confirmado", "confirmado", 1.0)
-    pd.DataFrame({"tic": [1], "decisao": ["confirmado"]}).to_csv(csv, index=False)
-    dados.marcar(conn, "Enviada ao VSX", True)
-    dados.marcar(conn, "Aceita no VSX", True)
+    pd.DataFrame({"tic": [1, 2, 3, 4]}).to_csv(csv, index=False)
     lista = dados.marcos(conn, csv)
-    assert all(m["feito"] for m in lista), lista
-    assert lista[0]["detalhe"] == "100% nas últimas 20" and lista[1]["detalhe"] == "2 de 2"
-    assert lista[2]["detalhe"] == "1 confirmada"
+    assert lista[0]["detalhe"] == "100% nas últimas 20" and lista[1]["detalhe"] == "4 de 4"
+    assert lista[2]["detalhe"] == "4 confirmadas"
+    assert lista[3]["detalhe"] == "0 de 4" and not lista[3]["feito"]
 
-    dados.marcar(conn, "Aceita no VSX", False)
-    assert not dados.marcos(conn, csv)[-1]["feito"]
-    assert dados.ler_marcos_manuais(conn) == {"Enviada ao VSX"}
+    dados.marcar_envio(conn, 1, enviada=True)
+    dados.marcar_envio(conn, 2, enviada=True)
+    dados.marcar_envio(conn, 1, aceita=True)
+    lista = dados.marcos(conn, csv)
+    assert lista[3]["detalhe"] == "2 de 4" and not lista[3]["feito"]
+    assert lista[4]["detalhe"] == "1 de 4" and not lista[4]["feito"]
+
+    for tic in (3, 4):
+        dados.marcar_envio(conn, tic, enviada=True)
+    for tic in (2, 3, 4):
+        dados.marcar_envio(conn, tic, aceita=True)
+    lista = dados.marcos(conn, csv)
+    assert lista[3]["feito"] and lista[3]["detalhe"] == "4 de 4", lista
+    assert lista[4]["feito"] and lista[4]["detalhe"] == "4 de 4", lista
+    assert sum(m["feito"] for m in lista) == 5
 
 
 def test_descrever_erro():

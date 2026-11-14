@@ -66,12 +66,35 @@ def esquecer_busca():
     execucao.LOG.unlink(missing_ok=True)
 
 
-def marcar_marco(nome: str):
-    with conectar() as conn:
-        dados.marcar(conn, nome, bool(st.session_state.get(f"marco_{nome}")))
+def esquecer_ficha():
+    execucao.FICHA_LOG.unlink(missing_ok=True)
+
+
+def iniciar_fichas():
+    st.session_state.confirmar_fichas = False
+    if not execucao.rodando() and not execucao.rodando_ficha():
+        execucao.iniciar_ficha(bool(st.session_state.get("fichas_duvidas", False)))
+
+
+def pedir_confirmacao_fichas(sim: bool):
+    st.session_state.confirmar_fichas = sim
+
+
+def pedir_cancelar_fichas(sim: bool):
+    st.session_state.confirmar_cancelar_ficha = sim
+
+
+def cancelar_fichas():
+    execucao.cancelar_ficha()
+    st.session_state.confirmar_cancelar_ficha = False
 
 
 def botao_buscar(chave: str):
+    if execucao.rodando_ficha():
+        st.button("Buscar mais candidatas", disabled=True, key=f"{chave}_espera")
+        st.info("A geração das fichas do VSX está rodando: espere terminar para buscar mais "
+                "candidatas.")
+        return
     # dois passos: um clique sem querer nao dispara 1 a 2 horas de rede
     if st.session_state.get("confirmar_busca"):
         st.warning("A busca leva 1 a 2 horas e baixa curvas de ~500 estrelas. Começar agora?")
@@ -118,10 +141,95 @@ def progresso():
                        "suas decisões não são tocadas.")
 
 
-def painel_busca(pendentes: int, sem_ficha: int = 0):
+@st.fragment(run_every=5)
+def progresso_ficha():
+    if not execucao.rodando_ficha():
+        st.rerun()
+    log = execucao.ler_log_ficha()
+    e = execucao.estado_ficha(log)
+    if not log or e["erro"] or e["cancelada"] or e["terminou"]:
+        st.info("A geração das fichas do VSX está rodando, iniciada pelo terminal: o progresso "
+                "aparece lá. As fichas entram na página Fichas quando ela terminar.")
+        return
+    minutos = execucao.minutos_desde_inicio(execucao.FICHA_LOG)
+    with st.container(border=True):
+        st.markdown("**Gerando as fichas do VSX**"
+                    + (f" na TIC {e['tic']}" if e["tic"] else ""))
+        texto = e["etapa"] or "Preparando"
+        if e["progresso"]:
+            i, n = e["progresso"]
+            st.progress(min(i / n, 1.0), text=f"{texto}: {i} de {n}")
+        else:
+            st.progress(0.0, text=texto)
+        st.caption(("" if minutos is None else f"{minutos:.0f} min desde o início. ")
+                   + "Pode fechar a página: as fichas continuam e ficam salvas.")
+        with st.expander("Ver o log"):
+            st.code("\n".join(log.splitlines()[-15:]) or "(vazio)")
+        if st.session_state.get("confirmar_cancelar_ficha"):
+            st.warning("Cancelar agora? As fichas já gravadas ficam salvas.")
+            sim, nao = st.columns(2)
+            sim.button("Sim, cancelar", type="primary", on_click=cancelar_fichas,
+                       key="ficha_cancelar_sim", width="stretch")
+            nao.button("Não", on_click=pedir_cancelar_fichas, args=(False,),
+                       key="ficha_cancelar_nao", width="stretch")
+        else:
+            st.button("Cancelar geração", on_click=pedir_cancelar_fichas, args=(True,),
+                      key="ficha_cancelar",
+                      help="Encerra agora. As fichas já gravadas não são apagadas; rodar de "
+                           "novo retoma.")
+
+
+def botao_fichas(sem_ficha: int):
+    if execucao.rodando():
+        st.button("Gerar fichas do VSX", disabled=True, key="fichas_gerar_espera")
+        st.info("A busca de candidatas está rodando: espere terminar para gerar as fichas.")
+        return
+    st.checkbox("Incluir as marcadas como dúvida", key="fichas_duvidas")
+    if st.session_state.get("confirmar_fichas"):
+        st.warning(f"Gerar ou completar {sem_ficha} ficha(s) do VSX? Leva alguns minutos por estrela.")
+        sim, nao = st.columns(2)
+        sim.button("Sim, gerar", type="primary", on_click=iniciar_fichas,
+                   key="fichas_sim", width="stretch")
+        nao.button("Não", on_click=pedir_confirmacao_fichas, args=(False,),
+                   key="fichas_nao", width="stretch")
+    else:
+        st.button("Gerar fichas do VSX", type="primary", on_click=pedir_confirmacao_fichas,
+                  args=(True,), key="fichas_gerar")
+    st.caption("Mede o período com todos os setores do TESS, sugere o tipo e grava "
+               "`data/vsx/fichas.md`. Pelo terminal, na pasta do projeto:")
+    st.code(execucao.FICHA_COMANDO, language="bash")
+
+
+def painel_ficha(sem_ficha: int):
+    """Fase 8 pelo app: progresso se roda, resultado da ultima e botao quando falta ficha."""
+    if execucao.rodando_ficha():
+        progresso_ficha()
+        return
+    e = execucao.estado_ficha(execucao.ler_log_ficha())
+    if e["erro"]:
+        st.error(f"A geração das fichas parou ({e['erro']}). Tentar de novo retoma as prontas.")
+        st.button("Ok", on_click=esquecer_ficha, key="ficha_erro_ok")
+    elif e["cancelada"]:
+        st.info("Geração de fichas cancelada. As fichas prontas ficaram salvas; rodar de novo "
+                "retoma.")
+        st.button("Ok", on_click=esquecer_ficha, key="ficha_cancelada_ok")
+    elif e["terminou"]:
+        st.success(f"Fichas geradas. {e['fim']}")
+        st.page_link("paginas/fichas.py", label="Abrir as fichas", icon=":material/menu_book:")
+        st.button("Ok", on_click=esquecer_ficha, key="ficha_fim_ok")
+    if sem_ficha:
+        botao_fichas(sem_ficha)
+
+
+def painel_busca(pendentes: int, sem_ficha: int = 0, incompletas: int = 0):
     """Busca de mais candidatas: progresso se roda; resultado da ultima; botao se a fila acabou."""
     if execucao.rodando():
         progresso()
+        if sem_ficha + incompletas:
+            botao_fichas(sem_ficha + incompletas)
+        return
+    if execucao.rodando_ficha():
+        painel_ficha(sem_ficha + incompletas)
         return
     e = execucao.estado(execucao.ler_log())
     if e["fim_da_grade"]:
@@ -141,12 +249,11 @@ def painel_busca(pendentes: int, sem_ficha: int = 0):
     if pendentes == 0:
         st.success("Fila revisada: nenhuma candidata pendente.")
         if sem_ficha:
-            st.info(f"**Próximo passo: a ficha do VSX.** {sem_ficha} confirmada(s) sem ficha. No "
-                    "terminal, na pasta do projeto, rode `python -u src/ficha_vsx.py` (Fase 8; "
-                    "`--duvidas` inclui as dúvidas). Ela mede o período com todos os setores do "
-                    "TESS, sugere o tipo e grava `data/vsx/fichas.md`. Leva alguns minutos por "
-                    "estrela. Depois confira cada estrela no VSX online (vsx.aavso.org) e "
-                    "submeta pelo formulário do VSX.")
+            st.markdown(f"**Próximo passo: a ficha do VSX.** {sem_ficha} confirmada(s) sem ficha.")
+        elif incompletas:
+            st.markdown(f"**{incompletas} ficha(s) do VSX incompleta(s)** (veja os avisos na "
+                        "página Fichas). Gerar de novo refaz só a busca que faltou.")
+        painel_ficha(sem_ficha + incompletas)
         botao_buscar("buscar_fim")
 
 
@@ -169,15 +276,12 @@ if todos.empty:
 revisados = int((todos["decisao"] != "pendente").sum())
 estilo.cabecalho("Revisão visual", (revisados, len(todos)), "revisados", DESCRICAO)
 with conectar() as conn:
+    dados.migrar_envios(conn, VSX_DIR / "fichas.csv")
     estilo.trilha_html(dados.marcos(conn, VSX_DIR / "fichas.csv"))
-    manuais = dados.ler_marcos_manuais(conn)
-with st.expander("Marcar envio ao VSX"):
-    for nome in dados.MARCOS_MANUAIS:
-        st.checkbox(nome, value=nome in manuais, key=f"marco_{nome}",
-                    on_change=marcar_marco, args=(nome,))
 pendentes = len(todos) - revisados
 confirmadas = set(todos.loc[todos["decisao"] == "confirmado", "tic"].astype(int))
-painel_busca(pendentes, len(dados.sem_ficha(confirmadas, VSX_DIR / "fichas.csv")))
+painel_busca(pendentes, len(dados.sem_ficha(confirmadas, VSX_DIR / "fichas.csv")),
+             len(confirmadas & dados.fichas_com_aviso(VSX_DIR / "fichas.csv")))
 if pendentes and not execucao.rodando():
     with st.sidebar.expander("Buscar mais candidatas"):
         st.caption(f"Ainda há {pendentes} pendente(s): o ideal é revisar antes.")

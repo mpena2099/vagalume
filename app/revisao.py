@@ -22,5 +22,6 @@ st.markdown(css(), unsafe_allow_html=True)
 
 st.navigation([
     st.Page("paginas/fila.py", title="Revisão", icon=":material/fact_check:", default=True),
+    st.Page("paginas/fichas.py", title="Fichas", icon=":material/menu_book:"),
     st.Page("paginas/treino.py", title="Treino", icon=":material/school:"),
 ]).run()
