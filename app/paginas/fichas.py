@@ -197,6 +197,14 @@ def anexo(rotulo: str, caminho_img: Path, nome: str, chave: str):
         st.caption(f"{rotulo}: arquivo não encontrado ({caminho_img.name}).")
 
 
+def desfazer_tipo(tic: int):
+    """Apaga o tipo salvo; o seletor volta a sugestao sem confirmar."""
+    with conectar() as conn:
+        dados.marcar_tipo(conn, tic, None)
+    por_tic.setdefault(tic, {})["tipo_final"] = None
+    st.session_state[f"tipo_{tic}"] = tipo_inicial(tic)
+
+
 def tipo_salvo(tic: int) -> str | None:
     salvo = por_tic.get(tic, {}).get("tipo_final")
     return salvo if pd.notna(salvo) and salvo else None
@@ -371,6 +379,9 @@ with aba_conferir:
     if provavel and st.session_state.get(f"tipo_{tic}") == provavel and tipo_salvo(tic) != provavel:
         st.button(f"Confirmar o tipo provável {provavel}", key=f"conf_tipo_{tic}",
                   on_click=salvar_tipo, args=(tic,), help=f.get("motivo_provavel"))
+    if tipo_salvo(tic):
+        st.button("Desfazer a escolha do tipo", key=f"desf_tipo_{tic}", icon=":material/undo:",
+                  on_click=desfazer_tipo, args=(tic,))
     with st.expander("Detalhes"):
         if f.get("motivo_tipo"):
             st.markdown("**Motivo do tipo**")
