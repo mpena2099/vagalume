@@ -4,6 +4,7 @@
 [![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](requirements.txt)
 [![demo: online](https://img.shields.io/badge/demo-online-2e7d32.svg)](https://vagalume.streamlit.app)
+[![Discussões](https://img.shields.io/badge/chat-Discuss%C3%B5es-555.svg)](https://github.com/mpena2099/vagalume/discussions)
 
 Pipeline pessoal de mineração de dados astronômicos que procura **estrelas variáveis ainda não catalogadas** nas curvas de luz públicas do satélite **TESS** (NASA), descarta as já conhecidas e entrega candidatas prontas para submissão ao **VSX**, o catálogo internacional de estrelas variáveis da AAVSO.
 
@@ -200,4 +201,4 @@ Código sob a licença [MIT](LICENSE). Imagens de terceiros mantêm a licença i
 
 ## Contribuir
 
-Issues e pull requests são bem-vindos. Leia o [CONTRIBUTING.md](CONTRIBUTING.md) antes: lá ficam o que ajuda mais, o ambiente de desenvolvimento e as regras, inclusive a de não publicar candidata que ainda não foi submetida.
+Issues e pull requests são bem-vindos. Dúvidas e ideias vão para as [Discussões](https://github.com/mpena2099/vagalume/discussions). Leia o [CONTRIBUTING.md](CONTRIBUTING.md) antes: lá ficam o que ajuda mais, o ambiente de desenvolvimento e as regras, inclusive a de não publicar candidata que ainda não foi submetida.

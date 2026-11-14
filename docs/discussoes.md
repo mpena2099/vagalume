@@ -1,6 +1,6 @@
 # Rascunhos de discussões
 
-Prontos para publicar quando as Discussions forem ativadas no repositório (Settings, Features). Uma seção por discussão, na ordem de publicação. A categoria vai na linha abaixo do título.
+Textos das [Discussões](https://github.com/mpena2099/vagalume/discussions). As quatro primeiras já estão publicadas; a da primeira submissão ao VSX espera a submissão. Uma seção por discussão, na ordem de publicação. A categoria vai na linha abaixo do título.
 
 ## Treino: casos que pareceram ambíguos
 
