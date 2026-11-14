@@ -272,20 +272,38 @@ CREATE TABLE IF NOT EXISTS envio_vsx (
     tic INTEGER PRIMARY KEY,
     enviada_em TEXT,
     aceita_em TEXT,
-    nome_vsx TEXT
+    nome_vsx TEXT,
+    tipo_final TEXT
 )"""
 
 
-def ler_envios(conn: sqlite3.Connection) -> pd.DataFrame:
+def _garantir_envio(conn: sqlite3.Connection) -> None:
     conn.execute(_SCHEMA_ENVIO)
-    return pd.read_sql("SELECT tic, enviada_em, aceita_em, nome_vsx FROM envio_vsx", conn)
+    colunas = {r[1] for r in conn.execute("PRAGMA table_info(envio_vsx)")}
+    if "tipo_final" not in colunas:
+        conn.execute("ALTER TABLE envio_vsx ADD COLUMN tipo_final TEXT")
+
+
+def ler_envios(conn: sqlite3.Connection) -> pd.DataFrame:
+    _garantir_envio(conn)
+    return pd.read_sql("SELECT tic, enviada_em, aceita_em, nome_vsx, tipo_final FROM envio_vsx",
+                       conn)
+
+
+def marcar_tipo(conn: sqlite3.Connection, tic: int, tipo: str | None) -> None:
+    """Guarda o tipo escolhido para a estrela sem tocar nas marcacoes de envio."""
+    _garantir_envio(conn)
+    tic = int(tic)
+    conn.execute("INSERT OR IGNORE INTO envio_vsx (tic) VALUES (?)", (tic,))
+    conn.execute("UPDATE envio_vsx SET tipo_final = ? WHERE tic = ?", (tipo or None, tic))
+    conn.commit()
 
 
 def marcar_envio(conn: sqlite3.Connection, tic: int, enviada: bool | None = None,
                  aceita: bool | None = None, nome_vsx: str | None = None) -> None:
     """Marca envio/aceite da estrela. Marcar grava a data, desmarcar grava NULL;
     aceita implica enviada."""
-    conn.execute(_SCHEMA_ENVIO)
+    _garantir_envio(conn)
     tic = int(tic)
     linha = conn.execute("SELECT enviada_em, aceita_em, nome_vsx FROM envio_vsx WHERE tic = ?",
                          (tic,)).fetchone()
@@ -303,8 +321,9 @@ def marcar_envio(conn: sqlite3.Connection, tic: int, enviada: bool | None = None
             aceita_em = None
     if nome_vsx is not None:
         nome = nome_vsx.strip() or None
-    conn.execute("INSERT OR REPLACE INTO envio_vsx VALUES (?, ?, ?, ?)",
-                 (tic, enviada_em, aceita_em, nome))
+    conn.execute("INSERT OR IGNORE INTO envio_vsx (tic) VALUES (?)", (tic,))
+    conn.execute("UPDATE envio_vsx SET enviada_em = ?, aceita_em = ?, nome_vsx = ? WHERE tic = ?",
+                 (enviada_em, aceita_em, nome, tic))
     conn.commit()
 
 
@@ -322,15 +341,15 @@ def migrar_envios(conn: sqlite3.Connection, fichas_csv: Path) -> int:
     except Exception:
         return 0
     confirmadas = set(cand.loc[cand["decisao"] == "confirmado", "tic"].astype(int))
-    conn.execute(_SCHEMA_ENVIO)
+    _garantir_envio(conn)
     existentes = {r[0] for r in conn.execute("SELECT tic FROM envio_vsx")}
     enviada_em = antigos.get("Enviada ao VSX")
     aceita_em = antigos.get("Aceita no VSX")
     enviada_em = enviada_em or aceita_em
     novos = 0
     for tic in sorted(confirmadas & (feitas - existentes)):
-        conn.execute("INSERT INTO envio_vsx VALUES (?, ?, ?, ?)",
-                     (tic, enviada_em, aceita_em, None))
+        conn.execute("INSERT INTO envio_vsx (tic, enviada_em, aceita_em) VALUES (?, ?, ?)",
+                     (tic, enviada_em, aceita_em))
         novos += 1
     conn.commit()
     return novos

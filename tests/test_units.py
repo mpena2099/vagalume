@@ -643,6 +643,101 @@ def test_descrever_erro():
     assert descrever_erro(ValueError("x")) == "ValueError"
 
 
+def _resp_vsx(corpo):
+    from unittest import mock
+    r = mock.Mock()
+    r.json.return_value = corpo
+    r.raise_for_status.return_value = None
+    return r
+
+
+def test_consultar_vsx():
+    from unittest import mock
+    from app import vsx
+    with mock.patch("requests.get", return_value=_resp_vsx({"VSXObjects": []})):
+        assert vsx.consultar_vsx(10.0, 20.0) == []
+    um = {"Name": "V1", "RA2000": "10.0", "Declination2000": "20.001",
+          "VariabilityType": "L", "MaxMag": "17 G", "MinMag": "18 G", "OID": "5"}
+    with mock.patch("requests.get", return_value=_resp_vsx({"VSXObjects": {"VSXObject": um}})) as g:
+        r = vsx.consultar_vsx(10.0, 20.0)
+        assert g.call_args.kwargs["params"]["radius"] == 60 / 3600
+    assert len(r) == 1 and r[0]["periodo"] == "" and abs(r[0]["dist_arcsec"] - 3.6) < 0.05
+    assert r[0]["url"].endswith("oid=5")
+    longe = dict(um, Name="V2", Declination2000="20.01", Period="1.5", OID="6")
+    with mock.patch("requests.get",
+                    return_value=_resp_vsx({"VSXObjects": {"VSXObject": [longe, um]}})):
+        r = vsx.consultar_vsx(10.0, 20.0)
+    assert [a["nome"] for a in r] == ["V1", "V2"] and r[1]["periodo"] == "1.5"
+
+
+def _ficha(**extra):
+    f = {"tic": 1, "avisos": "", "periodo_d": 1.23456, "periodo_erro_d": 0.00002,
+         "epoca_bjd": 2459000.1234, "amplitude_mag_tess": 0.25, "setores_usados": "55, 56",
+         "tipo_sugerido": "EA", "gaia_dr3": 123, "vizier_variaveis": "nenhum", "suspeito_blend": False}
+    f.update(extra)
+    return f
+
+
+def test_pendencias_vsx():
+    from app import vsx
+    from config import MARCA_PODE_SUBMETER
+
+    def niveis(p):
+        return [n for n, _ in p]
+    assert "bloqueia" not in niveis(vsx.pendencias(_ficha(), "EA", []))
+    p = vsx.pendencias(_ficha(avisos=f"Nao submeta ainda | {MARCA_PODE_SUBMETER}: x"), "EA", [])
+    assert ("bloqueia", "Nao submeta ainda") in p
+    amb = _ficha(tipo_sugerido="ROT, EW ou pulsante")
+    assert ("bloqueia", "Escolha o tipo pela forma da curva") in vsx.pendencias(amb, None, [])
+    assert "bloqueia" not in niveis(vsx.pendencias(amb, "EW", []))
+    perto = [{"nome": "V1", "dist_arcsec": 10.0}]
+    assert "bloqueia" in niveis(vsx.pendencias(_ficha(), "EA", perto))
+    medio = [{"nome": "V1", "dist_arcsec": 45.0}]
+    p = vsx.pendencias(_ficha(), "EA", medio)
+    assert "bloqueia" not in niveis(p) and any("45" in t for _, t in p)
+    assert ("atencao", "VSX online não conferido") in vsx.pendencias(_ficha(), "EA", None)
+    assert "atencao" in niveis(vsx.pendencias(_ficha(alerta_periodo="x", suspeito_blend=True),
+                                              "EA", []))
+
+
+def test_comentario_vsx():
+    from app import vsx
+    c = vsx.comentario(_ficha(), "EA", [])
+    assert "1.23456" in c and "TESS" in c and "—" not in c
+    assert "No known VSX variable within 1'" in c and "Gaia DR3 123" in c
+    assert "brighter Gaia neighbour" not in c
+    assert "brighter Gaia neighbour" in vsx.comentario(_ficha(suspeito_blend=True), "EA", [])
+    assert "No known VSX" not in vsx.comentario(_ficha(), "EA", None)
+    assert "epoca" not in vsx.comentario({"tic": 1}, None, None).lower()
+
+
+def test_tipo_final_envio():
+    conn = sqlite3.connect(":memory:")
+    dados.marcar_tipo(conn, 3, "EW")
+    dados.marcar_envio(conn, 3, enviada=True, nome_vsx="V9")
+    e = dados.ler_envios(conn).set_index("tic").loc[3]
+    assert e["tipo_final"] == "EW" and e["nome_vsx"] == "V9" and isinstance(e["enviada_em"], str)
+    dados.marcar_tipo(conn, 3, "EA")
+    e = dados.ler_envios(conn).set_index("tic").loc[3]
+    assert e["tipo_final"] == "EA" and e["nome_vsx"] == "V9" and isinstance(e["enviada_em"], str)
+    dados.marcar_tipo(conn, 4, "ROT")
+    assert pd.isna(dados.ler_envios(conn).set_index("tic").loc[4, "enviada_em"])
+
+
+def test_migrar_envio_antigo():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE envio_vsx (tic INTEGER PRIMARY KEY, enviada_em TEXT, "
+                 "aceita_em TEXT, nome_vsx TEXT)")
+    conn.execute("INSERT INTO envio_vsx VALUES (1, '2026-01-01T00:00:00', NULL, 'V1')")
+    conn.commit()
+    e = dados.ler_envios(conn).set_index("tic")
+    assert e.loc[1, "nome_vsx"] == "V1" and pd.isna(e.loc[1, "tipo_final"])
+    dados.marcar_tipo(conn, 1, "EB")
+    dados.marcar_envio(conn, 1, aceita=True)
+    e = dados.ler_envios(conn).set_index("tic").loc[1]
+    assert e["tipo_final"] == "EB" and e["nome_vsx"] == "V1" and isinstance(e["aceita_em"], str)
+
+
 if __name__ == "__main__":
     for nome, fn in list(globals().items()):
         if nome.startswith("test_"):

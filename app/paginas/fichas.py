@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd
 import streamlit as st
 
-from app import dados, estilo
+from app import dados, estilo, vsx
 from config import DEMO, SQLITE_PATH, VSX_DIR
 from src.ficha_vsx import ler_fichas
 
@@ -21,6 +21,16 @@ GUIA_VSX = "https://github.com/mpena2099/vagalume/blob/main/docs/submeter_vsx.md
 
 def conectar() -> sqlite3.Connection:
     return sqlite3.connect(str(SQLITE_PATH))
+
+
+def salvar_tipo(tic: int):
+    with conectar() as conn:
+        dados.marcar_tipo(conn, tic, st.session_state.get(f"tipo_{tic}"))
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def consultar(ra: float, dec: float) -> list[dict]:
+    return vsx.consultar_vsx(ra, dec)
 
 
 def salvar_envio(tic: int, origem: str):
@@ -41,14 +51,16 @@ def _fmt(valor, formato: str) -> str:
     return "?" if valor is None else format(valor, formato)
 
 
-def campos(f: dict) -> list[tuple[str, str, str]]:
+def campos(f: dict, tipo_final: str | None = None) -> list[tuple[str, str, str]]:
     """(rotulo, valor para copiar, ajuda) dos campos do formulario do VSX."""
     itens = []
     nomes = f"TIC {f['tic']}"
     if "gaia_dr3" in f:
         nomes += f", Gaia DR3 {f['gaia_dr3']}"
     itens.append(("Outros nomes", nomes, ""))
-    if "tipo_sugerido" in f:
+    if tipo_final:
+        itens.append(("Tipo", tipo_final, f.get("motivo_tipo", "")))
+    elif "tipo_sugerido" in f:
         itens.append(("Tipo (sugestão)", f["tipo_sugerido"], f.get("motivo_tipo", "")))
     if "periodo_d" in f:
         periodo = _fmt(f["periodo_d"], ".5f")
@@ -76,19 +88,21 @@ def campos(f: dict) -> list[tuple[str, str, str]]:
         itens.append(('VizieR a 30"', f["vizier_variaveis"], ""))
     if "suspeito_blend" in f:
         itens.append(("Suspeito de blend", "sim" if f["suspeito_blend"] else "não", ""))
-    if "figura_triagem" in f:
-        itens.append(("Figuras para anexar", f"{f.get('figura_fase', '')}\n{f['figura_triagem']}",
-                      ""))
     return itens
 
 
 if DEMO:
     st.stop()
 
+ICONES = {"ok": "✅", "atencao": "⚠️", "bloqueia": "❌"}
+
 estilo.cabecalho("Fichas do VSX", descricao=DESCRICAO)
-st.markdown(f"**Como submeter:** login em [vsx.aavso.org](https://vsx.aavso.org) (menu Register), "
-            f"menu Submit, **New Star Wizard**. Passo a passo e qual campo vai onde: "
-            f"[guia de submissão]({GUIA_VSX}).")
+st.markdown(
+    "**Login no VSX, uma vez:** "
+    "1. [Register](https://vsx.aavso.org/index.php?view=registration.top) (confirme pelo e-mail). "
+    "2. [Log In](https://vsx.aavso.org/index.php?view=login.top). "
+    "3. [Submit](https://vsx.aavso.org/index.php?view=submit.top), **New Star Wizard**. "
+    f"Envie uma estrela por vez. Qual campo vai onde: [guia de submissão]({GUIA_VSX}).")
 caminho = VSX_DIR / "fichas.csv"
 fichas = ler_fichas(caminho)
 if not fichas:
@@ -103,28 +117,104 @@ try:
         envios = dados.ler_envios(conn)
 except Exception as e:
     st.error(f"Não consegui ler os envios em {SQLITE_PATH}: {e}")
-    envios = pd.DataFrame(columns=["tic", "enviada_em", "aceita_em", "nome_vsx"])
+    envios = pd.DataFrame(columns=["tic", "enviada_em", "aceita_em", "nome_vsx", "tipo_final"])
 por_tic = envios.set_index("tic").to_dict("index") if not envios.empty else {}
+
+
+def vsx_da_ficha(f: dict) -> tuple[list[dict] | None, bool]:
+    """(achados, falhou): None sem coordenada ou com o VSX fora do ar."""
+    if "gaia_ra" not in f or "gaia_dec" not in f:
+        return None, False
+    try:
+        return consultar(f["gaia_ra"], f["gaia_dec"]), False
+    except Exception:
+        return None, True
+
+
+def anexo(rotulo: str, caminho_img: Path, nome: str, chave: str):
+    if caminho_img.exists():
+        st.download_button(rotulo, caminho_img.read_bytes(), file_name=nome, mime="image/png",
+                           key=chave)
+    else:
+        st.caption(f"{rotulo}: arquivo não encontrado ({caminho_img.name}).")
+
 
 for tic in sorted(fichas):
     f = fichas[tic]
     e = por_tic.get(tic, {})
     with st.container(border=True):
+        achados, falhou = vsx_da_ficha(f)
+        tipo_atual = st.session_state.get(f"tipo_{tic}")
+        if f"tipo_{tic}" not in st.session_state:
+            sugerido = str(f.get("tipo_sugerido") or "").strip()
+            tipo_atual = (e.get("tipo_final") or None) or (
+                sugerido if sugerido in vsx.TIPOS_VSX else None)
+            st.session_state[f"tipo_{tic}"] = tipo_atual
+        pend = vsx.pendencias(f, tipo_atual, achados)
+        if falhou:
+            pend.append(("atencao", "VSX não respondeu agora"))
+        pronta = not any(n == "bloqueia" for n, _ in pend)
+
         st.subheader(f"TIC {tic}"
                      + (f" · {f['decisao'].capitalize()}" if f.get("decisao") else ""))
-        avisos = str(f.get("avisos") or "").strip()
-        if f.get("alerta_periodo"):
-            st.warning(f"Período: {f['alerta_periodo']}")
-        if avisos:
-            st.warning(avisos.replace(" | ", "\n\n"))
+        if pronta:
+            st.badge("Pronta para enviar", color="green")
+        else:
+            st.badge("Falta resolver", color="orange")
+
+        st.markdown("**1. Conferir**")
+        for nivel, texto in pend:
+            st.markdown(f"{ICONES[nivel]} {texto}")
+        for a in achados or []:
+            st.markdown(f"- [{a['nome']}]({a['url']}) · {a['tipo'] or 'tipo ?'} · "
+                        f"{a['dist_arcsec']:.0f}\" · P {a['periodo'] or '?'}")
+        if st.button("Conferir no VSX de novo", key=f"vsxbtn_{tic}"):
+            consultar.clear()
+            st.rerun()
         figura = VSX_DIR / f"{tic}_fase.png"
         if figura.exists():
             st.image(figura, width="stretch")
         else:
             st.caption("Curva em fase não encontrada em data/vsx.")
+        triagem = Path(f["figura_triagem"]) if f.get("figura_triagem") else None
+        if triagem is not None and not triagem.is_absolute():
+            triagem = ROOT / triagem
+        with st.expander("Mapa por pixel e curvas da triagem"):
+            if triagem is not None and triagem.exists():
+                st.image(triagem, width="stretch")
+            else:
+                st.caption("Figura da triagem não encontrada.")
+
+        st.markdown("**2. Tipo**")
+        st.selectbox("Tipo de variável", list(vsx.TIPOS_VSX), key=f"tipo_{tic}", index=None,
+                     placeholder="Escolha pela forma da curva",
+                     format_func=lambda t: f"{t}: {vsx.TIPOS_VSX[t]}",
+                     on_change=salvar_tipo, args=(tic,))
+        if f.get("motivo_tipo"):
+            st.caption(f["motivo_tipo"])
+        tipo_atual = st.session_state.get(f"tipo_{tic}")
+
+        st.markdown("**3. Copiar no New Star Wizard**")
+        colunas = st.columns(2)
+        for i, (rotulo, valor, ajuda) in enumerate(campos(f, tipo_atual)):
+            with colunas[i % 2]:
+                st.markdown(f"**{rotulo}**")
+                st.code(valor)
+                if ajuda:
+                    st.caption(ajuda)
+        st.markdown("**Comentário para o moderador (em inglês)**")
+        st.code(vsx.comentario(f, tipo_atual, achados), language=None, wrap_lines=True)
+
+        st.markdown("**4. Anexar**")
+        c1, c2 = st.columns(2)
+        with c1:
+            anexo("Baixar curva em fase", figura, f"TIC{tic}_fase.png", f"dl_fase_{tic}")
+        with c2:
+            anexo("Baixar figura da triagem", triagem or Path("triagem"), f"TIC{tic}_triagem.png",
+                  f"dl_tri_{tic}")
 
         with st.container(border=True):
-            st.markdown("**Envio ao VSX**")
+            st.markdown("**5. Depois de enviar**")
             st.session_state.setdefault(f"env_{tic}", bool(e.get("enviada_em")))
             st.session_state.setdefault(f"ace_{tic}", bool(e.get("aceita_em")))
             st.session_state.setdefault(f"nome_{tic}", e.get("nome_vsx") or "")
@@ -139,12 +229,3 @@ for tic in sorted(fichas):
             if e.get("enviada_em"):
                 st.caption(f"Enviada em {e['enviada_em']}"
                            + (f" · aceita em {e['aceita_em']}" if e.get("aceita_em") else ""))
-
-        st.markdown("**Campos para copiar no formulário**")
-        colunas = st.columns(2)
-        for i, (rotulo, valor, ajuda) in enumerate(campos(f)):
-            with colunas[i % 2]:
-                st.markdown(f"**{rotulo}**")
-                st.code(valor)
-                if ajuda:
-                    st.caption(ajuda)

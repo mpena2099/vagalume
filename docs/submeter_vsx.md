@@ -6,13 +6,13 @@ Faça uma estrela por vez. A AAVSO recomenda que as primeiras submissões de que
 
 ## 1. Antes de abrir o formulário
 
-Na página **Fichas** do app, para a estrela escolhida:
+Na página **Fichas** do app, para a estrela escolhida (a página já confere o VSX sozinha pelas coordenadas, guarda o tipo que você escolher, gera o comentário em inglês e baixa os anexos):
 
 1. **Leia os avisos da ficha.** Aviso que diz "Não submeta" impede o envio. Aviso que diz "Pode submeter" é só informativo.
 2. **Decida o tipo.** Se a ficha sugere "ROT, EW ou pulsante", escolha pela forma da curva em fase: dois mínimos iguais e curva contínua indicam EW (binária de contato); onda única e suave, ROT (mancha) ou pulsante. Na dúvida, prefira a estrela seguinte e deixe essa para depois.
 3. **Confira o período.** Com o alerta "períodos dos setores não alinham", abra a figura e veja se os eclipses de setores diferentes caem no mesmo lugar. Se não caem, o período ainda não está bom para enviar.
 4. **Veja a vizinha.** Com "Suspeito de blend: sim", confira no mapa por pixel da Revisão se o pico do sinal está no alvo. Se estiver, siga e mencione a vizinha no comentário da submissão.
-5. **Busque no VSX online.** Em [vsx.aavso.org](https://vsx.aavso.org), use a busca por coordenadas com a RA e a Dec da ficha e raio de 1 minuto de arco. Se a estrela já aparece, alguém submeteu antes: não envie.
+5. **Busque no VSX online.** A página Fichas faz isso sozinha e lista o que achar; para conferir à mão, em [vsx.aavso.org](https://vsx.aavso.org), use a busca por coordenadas com a RA e a Dec da ficha e raio de 1 minuto de arco. Se a estrela já aparece, alguém submeteu antes: não envie.
 
 ## 2. Criar o login no VSX
 
@@ -30,7 +30,7 @@ O login do VSX é separado da conta do site da AAVSO.
 
 ## 4. Copiar os campos da ficha
 
-Cada campo da página Fichas tem um botão de copiar. Os nomes no formulário podem variar um pouco; a correspondência é esta:
+Cada campo da página Fichas tem um botão de copiar, e o comentário em inglês já vem pronto com os números da ficha (confira antes de colar). Os anexos têm botão de baixar na própria página. Os nomes no formulário podem variar um pouco; a correspondência é esta:
 
 | No formulário do VSX | Da ficha |
 |---|---|
