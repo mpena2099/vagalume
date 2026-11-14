@@ -125,11 +125,26 @@ tabela = pd.DataFrame({
         dados.sugestao(dados.checklist(r))] for r in lista.to_dict("records")],
     "Decisão": lista["decisao"].map(ROTULOS),
 })
-evento = st.dataframe(
-    tabela, hide_index=True, width="stretch", height=min(36 * (total + 1) + 3, 215),
-    on_select="rerun", selection_mode="single-row", key=f"fila_tabela_{st.session_state.get('tab_n', 0)}")
-if evento.selection.rows:
-    st.session_state.pos = min(total - 1, evento.selection.rows[0])
+chave_tab = f"fila_tabela_{st.session_state.get('tab_n', 0)}"
+
+
+def clicar_tabela():
+    """Clique em qualquer celula da linha abre a candidata."""
+    celulas = st.session_state[chave_tab]["selection"].get("cells", [])
+    if celulas:
+        st.session_state.pos = min(total - 1, celulas[0][0])
+        st.session_state.tab_n = st.session_state.get("tab_n", 0) + 1
+
+
+aberta = st.session_state.pos
+tabela.insert(0, " ", ["▶" if i == aberta else "" for i in range(total)])
+destaque = tabela.style.apply(
+    lambda linha: ["background-color: rgba(255, 196, 0, 0.18); font-weight: 600"
+                   if linha.name == aberta else "" for _ in linha], axis=1)
+st.dataframe(
+    destaque, hide_index=True, width="stretch", height=min(36 * (total + 1) + 3, 215),
+    on_select=clicar_tabela, selection_mode="single-cell", key=chave_tab,
+    column_config={" ": st.column_config.TextColumn(width=30)})
 
 # ---------------------------------------------------------------- candidata
 r = lista.iloc[st.session_state.pos].to_dict()

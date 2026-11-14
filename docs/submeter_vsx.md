@@ -8,7 +8,7 @@ Faça uma estrela por vez. A AAVSO recomenda que as primeiras submissões de que
 
 Na página **Fichas** do app, para a estrela escolhida (a página já confere o VSX sozinha pelas coordenadas, guarda o tipo que você escolher, gera o comentário em inglês e baixa os anexos):
 
-1. **Leia os avisos da ficha.** Aviso que diz "Não submeta" impede o envio. Aviso que diz "Pode submeter" é só informativo.
+1. **Leia os avisos da ficha.** Aviso que diz "Não submeta" impede o envio. Aviso que diz "Pode submeter" é só informativo: com o VizieR do CDS fora do ar, a busca a 30" foi feita nos 25 principais catálogos de variáveis (VSX, GCVS, Gaia DR3, ATLAS, ASAS-SN e outros) em vez de nos milhares do VizieR inteiro. A checagem que evita enviar estrela já submetida é a do próprio VSX, que fica em outro servidor e a página faz ao vivo; o moderador confere de novo antes de aceitar.
 2. **Decida o tipo.** Se a ficha sugere "ROT, EW ou pulsante", escolha pela forma da curva em fase: dois mínimos iguais e curva contínua indicam EW (binária de contato); onda única e suave, ROT (mancha) ou pulsante. Na dúvida, prefira a estrela seguinte e deixe essa para depois.
 3. **Confira o período.** Com o alerta "períodos dos setores não alinham", abra a figura e veja se os eclipses de setores diferentes caem no mesmo lugar. Se não caem, o período ainda não está bom para enviar.
 4. **Veja a vizinha.** Com "Suspeito de blend: sim", abra o painel "Mapa por pixel e curvas da triagem" e veja onde está o pico do sinal (explicação logo abaixo).

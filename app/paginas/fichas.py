@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from app import dados, estilo, paineis, vsx
-from config import DEMO, SQLITE_PATH, VSX_DIR
+from config import DEMO, MARCA_PODE_SUBMETER, SQLITE_PATH, VSX_DIR
 from src.ficha_vsx import ler_fichas
 
 DESCRICAO = "Confira cada estrela confirmada, copie os campos no VSX e marque o envio."
@@ -197,6 +197,13 @@ def vizinha(lista: list[int], atual: int, passo: int) -> int | None:
     return lista[(lista.index(atual) + passo) % len(lista)]
 
 
+def clicar_tabela(chave: str, lista: list[int]):
+    """Clique em qualquer celula da linha abre a estrela."""
+    celulas = st.session_state[chave]["selection"].get("cells", [])
+    if celulas:
+        ficha_aberta(lista[celulas[0][0]])
+
+
 def andar(passo: int):
     filtro = st.session_state.get("ficha_filtro") or "A enviar"
     ficha_aberta(vizinha(grupos[filtro], st.session_state["ficha_sel"], passo))
@@ -237,19 +244,14 @@ if visiveis:
     destaque = tabela.style.apply(
         lambda linha: ["background-color: rgba(255, 196, 0, 0.18); font-weight: 600"
                        if linha["TIC"] == aberta else "" for _ in linha], axis=1)
-    evento = st.dataframe(
+    st.dataframe(
         destaque, hide_index=True, width="stretch", height=min(36 * (len(visiveis) + 1) + 3, 215),
-        on_select="rerun", selection_mode="single-row", key=chave_tab,
+        on_select=lambda: clicar_tabela(chave_tab, visiveis), selection_mode="single-cell",
+        key=chave_tab,
         column_config={" ": st.column_config.TextColumn(width=30),
                        "TIC": st.column_config.NumberColumn(format="%d"),
                        "P (d)": st.column_config.NumberColumn(format="%.5f"),
                        "V": st.column_config.NumberColumn(format="%.2f")})
-    if evento.selection.rows:
-        escolhida = visiveis[evento.selection.rows[0]]
-        if st.session_state.get("ficha_tab_ult") != (chave_tab, escolhida):
-            st.session_state["ficha_tab_ult"] = (chave_tab, escolhida)
-            st.session_state["ficha_sel"] = escolhida
-            st.rerun()
 else:
     st.caption("Nenhuma estrela nesse filtro.")
 
@@ -279,6 +281,18 @@ with aba_conferir:
             else "**Próximo passo:** Tudo certo: siga para a aba Enviar.")
     for nivel, texto in bloqueadas[1:]:
         st.markdown(f"{ICONES[nivel]} {texto}")
+    if MARCA_PODE_SUBMETER in (f.get("avisos") or ""):
+        with st.expander("Por que posso enviar com o VizieR do CDS fora do ar?"):
+            st.markdown(
+                "- **O VSX está no ar** (é da AAVSO, outro servidor). Esta página consulta o VSX "
+                "ao vivo em volta da estrela: é a checagem que evita enviar uma estrela já submetida.\n"
+                "- **Os principais catálogos de variáveis foram consultados** no espelho do VizieR "
+                "(VSX, GCVS, Gaia DR3, ATLAS, ASAS-SN, TESS, ZTF e outros, 25 no total), sem nada a 30\".\n"
+                "- **Falta só a varredura nos milhares de catálogos restantes** do VizieR, a maioria "
+                "sem relação com variáveis. É um pente-fino extra; o moderador do VSX confere de "
+                "qualquer forma antes de aceitar.\n\n"
+                "Quando o CDS voltar, gerar as fichas de novo refaz a busca completa sozinho. "
+                "No pior caso, o moderador responde que a estrela já era conhecida.")
     if figura.exists():
         st.image(figura, width="stretch")
     else:
