@@ -16,6 +16,7 @@ from src.ficha_vsx import ler_fichas
 
 DESCRICAO = ("O que copiar para o formulário do VSX em cada estrela confirmada, com a curva em "
              "fase e os avisos da ficha. Marque aqui o envio e o aceite de cada uma.")
+GUIA_VSX = "https://github.com/mpena2099/vagalume/blob/main/docs/submeter_vsx.md"
 
 
 def conectar() -> sqlite3.Connection:
@@ -85,6 +86,9 @@ if DEMO:
     st.stop()
 
 estilo.cabecalho("Fichas do VSX", descricao=DESCRICAO)
+st.markdown(f"**Como submeter:** login em [vsx.aavso.org](https://vsx.aavso.org) (menu Register), "
+            f"menu Submit, **New Star Wizard**. Passo a passo e qual campo vai onde: "
+            f"[guia de submissão]({GUIA_VSX}).")
 caminho = VSX_DIR / "fichas.csv"
 fichas = ler_fichas(caminho)
 if not fichas:
