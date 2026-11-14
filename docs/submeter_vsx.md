@@ -11,8 +11,20 @@ Na página **Fichas** do app, para a estrela escolhida (a página já confere o 
 1. **Leia os avisos da ficha.** Aviso que diz "Não submeta" impede o envio. Aviso que diz "Pode submeter" é só informativo.
 2. **Decida o tipo.** Se a ficha sugere "ROT, EW ou pulsante", escolha pela forma da curva em fase: dois mínimos iguais e curva contínua indicam EW (binária de contato); onda única e suave, ROT (mancha) ou pulsante. Na dúvida, prefira a estrela seguinte e deixe essa para depois.
 3. **Confira o período.** Com o alerta "períodos dos setores não alinham", abra a figura e veja se os eclipses de setores diferentes caem no mesmo lugar. Se não caem, o período ainda não está bom para enviar.
-4. **Veja a vizinha.** Com "Suspeito de blend: sim", confira no mapa por pixel da Revisão se o pico do sinal está no alvo. Se estiver, siga e mencione a vizinha no comentário da submissão.
+4. **Veja a vizinha.** Com "Suspeito de blend: sim", abra o painel "Mapa por pixel e curvas da triagem" e veja onde está o pico do sinal (explicação logo abaixo).
 5. **Busque no VSX online.** A página Fichas faz isso sozinha e lista o que achar; para conferir à mão, em [vsx.aavso.org](https://vsx.aavso.org), use a busca por coordenadas com a RA e a Dec da ficha e raio de 1 minuto de arco. Se a estrela já aparece, alguém submeteu antes: não envie.
+
+### O que é suspeita de blend
+
+Os pixels do TESS são grandes: cada um cobre 21" do céu. A luz das estrelas próximas cai nos mesmos pixels e se soma à do alvo, de modo que, se uma vizinha varia, a curva do alvo também parece variar. Isso é um blend (mistura).
+
+A Fase 6 faz uma conta para cada vizinha do Gaia a até 42" (dois pixels) com até 4 magnitudes a menos que o alvo: quanto ela precisaria variar para produzir sozinha a variação observada? Se bastar menos de 50% do brilho dela, uma estrela real consegue, e a ficha sai com "suspeito de blend". Se precisasse de mais, a vizinha não explica o sinal.
+
+É uma suspeita, não um veredito. Quem decide é o mapa por pixel:
+
+- **Pico do sinal no pixel do alvo:** a variação é da sua estrela. Siga e mencione a vizinha no comentário (a frase em inglês gerada pela página já faz isso).
+- **Pico deslocado para o lado da vizinha:** o sinal é dela. Não submeta.
+- **Não dá para distinguir:** deixe a estrela para depois e comece pelas outras.
 
 ## 2. Criar o login no VSX
 

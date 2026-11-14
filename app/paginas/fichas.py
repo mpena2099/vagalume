@@ -97,12 +97,13 @@ if DEMO:
 ICONES = {"ok": "✅", "atencao": "⚠️", "bloqueia": "❌"}
 
 estilo.cabecalho("Fichas do VSX", descricao=DESCRICAO)
-st.markdown(
-    "**Login no VSX, uma vez:** "
-    "1. [Register](https://vsx.aavso.org/index.php?view=registration.top) (confirme pelo e-mail). "
-    "2. [Log In](https://vsx.aavso.org/index.php?view=login.top). "
-    "3. [Submit](https://vsx.aavso.org/index.php?view=submit.top), **New Star Wizard**. "
-    f"Envie uma estrela por vez. Qual campo vai onde: [guia de submissão]({GUIA_VSX}).")
+with st.expander("Login e envio no VSX"):
+    st.markdown(
+        "**Login no VSX, uma vez:** "
+        "1. [Register](https://vsx.aavso.org/index.php?view=registration.top) (confirme pelo e-mail). "
+        "2. [Log In](https://vsx.aavso.org/index.php?view=login.top). "
+        "3. [Submit](https://vsx.aavso.org/index.php?view=submit.top), **New Star Wizard**. "
+        f"Envie uma estrela por vez. Qual campo vai onde: [guia de submissão]({GUIA_VSX}).")
 caminho = VSX_DIR / "fichas.csv"
 fichas = ler_fichas(caminho)
 if not fichas:
@@ -139,93 +140,127 @@ def anexo(rotulo: str, caminho_img: Path, nome: str, chave: str):
         st.caption(f"{rotulo}: arquivo não encontrado ({caminho_img.name}).")
 
 
-for tic in sorted(fichas):
-    f = fichas[tic]
-    e = por_tic.get(tic, {})
-    with st.container(border=True):
-        achados, falhou = vsx_da_ficha(f)
-        tipo_atual = st.session_state.get(f"tipo_{tic}")
-        if f"tipo_{tic}" not in st.session_state:
-            sugerido = str(f.get("tipo_sugerido") or "").strip()
-            tipo_atual = (e.get("tipo_final") or None) or (
-                sugerido if sugerido in vsx.TIPOS_VSX else None)
-            st.session_state[f"tipo_{tic}"] = tipo_atual
-        pend = vsx.pendencias(f, tipo_atual, achados)
-        if falhou:
-            pend.append(("atencao", "VSX não respondeu agora"))
-        pronta = not any(n == "bloqueia" for n, _ in pend)
+def situacao(tic: int) -> tuple[list[dict] | None, list[tuple[str, str]], bool]:
+    """(achados do VSX, pendencias, pronta) da estrela, com o tipo atual salvo."""
+    f, e = fichas[tic], por_tic.get(tic, {})
+    achados, falhou = vsx_da_ficha(f)
+    if f"tipo_{tic}" not in st.session_state:
+        sugerido = str(f.get("tipo_sugerido") or "").strip()
+        st.session_state[f"tipo_{tic}"] = (e.get("tipo_final") or None) or (
+            sugerido if sugerido in vsx.TIPOS_VSX else None)
+    pend = vsx.pendencias(f, st.session_state.get(f"tipo_{tic}"), achados)
+    if falhou:
+        pend.append(("atencao", "VSX não respondeu agora"))
+    return achados, pend, not any(n == "bloqueia" for n, _ in pend)
 
-        st.subheader(f"TIC {tic}"
-                     + (f" · {f['decisao'].capitalize()}" if f.get("decisao") else ""))
-        if pronta:
-            st.badge("Pronta para enviar", color="green")
-        else:
-            st.badge("Falta resolver", color="orange")
 
-        st.markdown("**1. Conferir**")
-        for nivel, texto in pend:
-            st.markdown(f"{ICONES[nivel]} {texto}")
-        for a in achados or []:
+situacoes = {tic: situacao(tic) for tic in sorted(fichas)}
+
+
+def rotulo_estrela(tic: int) -> str:
+    return f"{tic} ✅ pronta" if situacoes[tic][2] else f"{tic} ⚠️ falta resolver"
+
+
+tics = list(situacoes)
+if st.session_state.get("ficha_sel") not in tics:
+    st.session_state["ficha_sel"] = tics[0]
+st.segmented_control("Estrela", tics, key="ficha_sel", format_func=rotulo_estrela,
+                     selection_mode="single", label_visibility="collapsed")
+tic = st.session_state.get("ficha_sel") or tics[0]
+
+f = fichas[tic]
+e = por_tic.get(tic, {})
+achados, pend, pronta = situacoes[tic]
+tipo_atual = st.session_state.get(f"tipo_{tic}")
+
+figura = VSX_DIR / f"{tic}_fase.png"
+triagem = Path(f["figura_triagem"]) if f.get("figura_triagem") else None
+if triagem is not None and not triagem.is_absolute():
+    triagem = ROOT / triagem
+
+st.subheader(f"TIC {tic}" + (f" · {f['decisao'].capitalize()}" if f.get("decisao") else ""))
+aba_resumo, aba_copiar, aba_detalhes, aba_envio = st.tabs(
+    ["Resumo", "Copiar", "Detalhes", "Envio"])
+
+with aba_resumo:
+    if pronta:
+        st.badge("Pronta para enviar", color="green")
+    else:
+        st.badge("Falta resolver", color="orange")
+    prox = next((t for n, t in pend if n == "bloqueia"), None) or next(
+        (t for n, t in pend if n == "atencao"), None)
+    st.info(f"**Próximo passo:** {prox}" if prox else "**Próximo passo:** Copie os campos na aba Copiar.")
+    for nivel, texto in pend:
+        st.markdown(f"{ICONES[nivel]} {texto}")
+    if figura.exists():
+        st.image(figura, width="stretch")
+    else:
+        st.caption("Curva em fase não encontrada em data/vsx.")
+    st.selectbox("Tipo de variável", list(vsx.TIPOS_VSX), key=f"tipo_{tic}", index=None,
+                 placeholder="Escolha pela forma da curva",
+                 format_func=lambda t: f"{t}: {vsx.TIPOS_VSX[t]}",
+                 on_change=salvar_tipo, args=(tic,))
+    if f.get("motivo_tipo"):
+        st.caption(f["motivo_tipo"])
+    tipo_atual = st.session_state.get(f"tipo_{tic}")
+
+with aba_copiar:
+    st.markdown("**Campos do New Star Wizard**")
+    colunas = st.columns(2)
+    for i, (rotulo, valor, ajuda) in enumerate(campos(f, tipo_atual)):
+        with colunas[i % 2]:
+            st.markdown(f"**{rotulo}**")
+            st.code(valor)
+            if ajuda:
+                st.caption(ajuda)
+    st.markdown("**Comentário para o moderador (em inglês)**")
+    st.code(vsx.comentario(f, tipo_atual, achados), language=None, wrap_lines=True)
+    st.markdown("**Anexos**")
+    c1, c2 = st.columns(2)
+    with c1:
+        anexo("Baixar curva em fase", figura, f"TIC{tic}_fase.png", f"dl_fase_{tic}")
+    with c2:
+        anexo("Baixar figura da triagem", triagem or Path("triagem"), f"TIC{tic}_triagem.png",
+              f"dl_tri_{tic}")
+
+with aba_detalhes:
+    st.markdown("**Mapa por pixel e curvas da triagem**")
+    if triagem is not None and triagem.exists():
+        st.image(triagem, width="stretch")
+    else:
+        st.caption("Figura da triagem não encontrada.")
+    st.markdown("**Achados no VSX**")
+    if achados:
+        for a in achados:
             st.markdown(f"- [{a['nome']}]({a['url']}) · {a['tipo'] or 'tipo ?'} · "
                         f"{a['dist_arcsec']:.0f}\" · P {a['periodo'] or '?'}")
-        if st.button("Conferir no VSX de novo", key=f"vsxbtn_{tic}"):
-            consultar.clear()
-            st.rerun()
-        figura = VSX_DIR / f"{tic}_fase.png"
-        if figura.exists():
-            st.image(figura, width="stretch")
-        else:
-            st.caption("Curva em fase não encontrada em data/vsx.")
-        triagem = Path(f["figura_triagem"]) if f.get("figura_triagem") else None
-        if triagem is not None and not triagem.is_absolute():
-            triagem = ROOT / triagem
-        with st.expander("Mapa por pixel e curvas da triagem"):
-            if triagem is not None and triagem.exists():
-                st.image(triagem, width="stretch")
-            else:
-                st.caption("Figura da triagem não encontrada.")
+    else:
+        st.caption("Nenhum achado no VSX a até 60\".")
+    if st.button("Conferir no VSX de novo", key=f"vsxbtn_{tic}"):
+        consultar.clear()
+        st.rerun()
+    if f.get("avisos"):
+        st.markdown("**Avisos da ficha**")
+        st.write(f["avisos"])
+    if f.get("motivo_tipo"):
+        st.markdown("**Motivo do tipo**")
+        st.write(f["motivo_tipo"])
+    if f.get("vizier_variaveis"):
+        st.markdown('**VizieR a 30"**')
+        st.write(f["vizier_variaveis"])
 
-        st.markdown("**2. Tipo**")
-        st.selectbox("Tipo de variável", list(vsx.TIPOS_VSX), key=f"tipo_{tic}", index=None,
-                     placeholder="Escolha pela forma da curva",
-                     format_func=lambda t: f"{t}: {vsx.TIPOS_VSX[t]}",
-                     on_change=salvar_tipo, args=(tic,))
-        if f.get("motivo_tipo"):
-            st.caption(f["motivo_tipo"])
-        tipo_atual = st.session_state.get(f"tipo_{tic}")
-
-        st.markdown("**3. Copiar no New Star Wizard**")
-        colunas = st.columns(2)
-        for i, (rotulo, valor, ajuda) in enumerate(campos(f, tipo_atual)):
-            with colunas[i % 2]:
-                st.markdown(f"**{rotulo}**")
-                st.code(valor)
-                if ajuda:
-                    st.caption(ajuda)
-        st.markdown("**Comentário para o moderador (em inglês)**")
-        st.code(vsx.comentario(f, tipo_atual, achados), language=None, wrap_lines=True)
-
-        st.markdown("**4. Anexar**")
-        c1, c2 = st.columns(2)
-        with c1:
-            anexo("Baixar curva em fase", figura, f"TIC{tic}_fase.png", f"dl_fase_{tic}")
-        with c2:
-            anexo("Baixar figura da triagem", triagem or Path("triagem"), f"TIC{tic}_triagem.png",
-                  f"dl_tri_{tic}")
-
-        with st.container(border=True):
-            st.markdown("**5. Depois de enviar**")
-            st.session_state.setdefault(f"env_{tic}", bool(e.get("enviada_em")))
-            st.session_state.setdefault(f"ace_{tic}", bool(e.get("aceita_em")))
-            st.session_state.setdefault(f"nome_{tic}", e.get("nome_vsx") or "")
-            c1, c2, c3 = st.columns([1, 1, 2], vertical_alignment="center")
-            c1.checkbox("Enviada ao VSX", key=f"env_{tic}",
-                        on_change=salvar_envio, args=(tic, "env"))
-            c2.checkbox("Aceita no VSX", key=f"ace_{tic}",
-                        on_change=salvar_envio, args=(tic, "ace"),
-                        disabled=not st.session_state[f"env_{tic}"])
-            c3.text_input("Nome no VSX", key=f"nome_{tic}",
-                          on_change=salvar_envio, args=(tic, "nome"))
-            if e.get("enviada_em"):
-                st.caption(f"Enviada em {e['enviada_em']}"
-                           + (f" · aceita em {e['aceita_em']}" if e.get("aceita_em") else ""))
+with aba_envio:
+    st.session_state.setdefault(f"env_{tic}", bool(e.get("enviada_em")))
+    st.session_state.setdefault(f"ace_{tic}", bool(e.get("aceita_em")))
+    st.session_state.setdefault(f"nome_{tic}", e.get("nome_vsx") or "")
+    c1, c2, c3 = st.columns([1, 1, 2], vertical_alignment="center")
+    c1.checkbox("Enviada ao VSX", key=f"env_{tic}",
+                on_change=salvar_envio, args=(tic, "env"))
+    c2.checkbox("Aceita no VSX", key=f"ace_{tic}",
+                on_change=salvar_envio, args=(tic, "ace"),
+                disabled=not st.session_state[f"env_{tic}"])
+    c3.text_input("Nome no VSX", key=f"nome_{tic}",
+                  on_change=salvar_envio, args=(tic, "nome"))
+    if e.get("enviada_em"):
+        st.caption(f"Enviada em {e['enviada_em']}"
+                   + (f" · aceita em {e['aceita_em']}" if e.get("aceita_em") else ""))
