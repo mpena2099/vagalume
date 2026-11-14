@@ -345,13 +345,17 @@ def fichas_com_aviso(fichas_csv: Path) -> set[int]:
         return set()
 
 
+def com_ficha(fichas_csv: Path) -> set[int]:
+    """TICs que ja tem ficha no fichas.csv da Fase 8."""
+    try:
+        return set(pd.read_csv(fichas_csv)["tic"].astype(int))
+    except Exception:
+        return set()
+
+
 def sem_ficha(confirmadas: set[int], fichas_csv: Path) -> set[int]:
     """Confirmadas que ainda nao estao no fichas.csv da Fase 8."""
-    try:
-        feitas = set(pd.read_csv(fichas_csv)["tic"].astype(int))
-    except Exception:  # sem arquivo ou sem coluna tic
-        feitas = set()
-    return set(confirmadas) - feitas
+    return set(confirmadas) - com_ficha(fichas_csv)
 
 
 def marcos(conn: sqlite3.Connection, fichas_csv: Path) -> list[dict]:

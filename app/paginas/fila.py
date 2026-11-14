@@ -215,11 +215,15 @@ def painel_ficha(sem_ficha: int):
                 "retoma.")
         st.button("Ok", on_click=esquecer_ficha, key="ficha_cancelada_ok")
     elif e["terminou"]:
-        if dados.fichas_com_aviso(VSX_DIR / "fichas.csv"):
-            st.warning(f"A rodada terminou, mas há fichas incompletas: veja os avisos na página "
-                       f"Fichas. {e['fim']}")
+        total = len(dados.com_ficha(VSX_DIR / "fichas.csv"))
+        faltam = len(dados.fichas_com_aviso(VSX_DIR / "fichas.csv"))
+        if faltam:
+            st.warning(f"Geração terminada: {total - faltam} de {total} fichas prontas e {faltam} "
+                       "ainda incompleta(s), porque a busca num servidor externo (VizieR ou Gaia) "
+                       "não respondeu. Gere de novo mais tarde: só essa busca é refeita. Os "
+                       "avisos de cada uma estão na página Fichas.")
         else:
-            st.success(f"Fichas prontas. {e['fim']}")
+            st.success(f"Geração terminada: as {total} fichas estão prontas na página Fichas.")
         st.page_link("paginas/fichas.py", label="Abrir as fichas", icon=":material/menu_book:")
         st.button("Ok", on_click=esquecer_ficha, key="ficha_fim_ok")
     if sem_ficha:
@@ -255,7 +259,7 @@ def painel_busca(pendentes: int, sem_ficha: int = 0, incompletas: int = 0):
         st.success("Fila revisada: nenhuma candidata pendente.")
         if sem_ficha:
             st.markdown(f"**Próximo passo: a ficha do VSX.** {sem_ficha} confirmada(s) sem ficha.")
-        elif incompletas:
+        elif incompletas and not execucao.estado_ficha(execucao.ler_log_ficha())["terminou"]:
             st.markdown(f"**{incompletas} ficha(s) do VSX incompleta(s)** (veja os avisos na "
                         "página Fichas). Gerar de novo refaz só a busca que faltou.")
         painel_ficha(sem_ficha + incompletas)
