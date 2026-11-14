@@ -283,9 +283,10 @@ def painel_busca(pendentes: int, sem_ficha: int = 0, incompletas: int = 0, parci
             st.markdown(f"**{incompletas} ficha(s) do VSX incompleta(s)** (veja os avisos na "
                         "página Fichas). Gerar de novo refaz só a busca que faltou.")
         elif parciais:
-            st.markdown(f"**{parciais} ficha(s) com a busca no VizieR feita só na lista de "
-                        "catálogos de variáveis**, porque o VizieR de Estrasburgo está fora. Dá "
-                        "para submeter; quando ele voltar, gerar de novo faz a busca completa.")
+            st.markdown(f"**{parciais} ficha(s) prontas para submeter.** A busca no VizieR foi "
+                        "feita nos principais catálogos de variáveis, não em todos, porque o "
+                        "VizieR de Estrasburgo está fora. Se quiser, quando ele voltar, gere de "
+                        "novo para a busca completa (opcional).")
             if vizier_no_ar()[0]:
                 incompletas = parciais
         painel_ficha(sem_ficha, incompletas)

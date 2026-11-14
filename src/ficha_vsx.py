@@ -55,11 +55,11 @@ AVISO_VIZIER = ("Busca em todos os catálogos do VizieR não feita (servidor sem
                 "antes de rodar a Fase 8 de novo com o VizieR respondendo ou de conferir à mão: "
                 "busque as coordenadas desta ficha com raio de 30\" em vizier.cds.unistra.fr ou "
                 "em vizier.idia.ac.za.")
-AVISO_VIZIER_LISTA = (f"Busca no VizieR feita só nos {len(CATALOGOS_VARIAVEIS_ESPELHO)} catálogos de "
-                      "variáveis da lista (o VizieR de Estrasburgo estava fora e o espelho não "
-                      "faz a busca em todos). Fica de fora algum catálogo pequeno que tenha "
-                      f"publicado a estrela. {MARCA_PODE_SUBMETER} assim; quando o VizieR voltar, "
-                      "rodar a Fase 8 de novo faz a busca completa.")
+AVISO_VIZIER_LISTA = (f"Busca no VizieR feita nos {len(CATALOGOS_VARIAVEIS_ESPELHO)} principais "
+                      "catálogos de variáveis, não em todos (o VizieR de Estrasburgo estava fora "
+                      f"e o espelho não faz a busca completa). {MARCA_PODE_SUBMETER} assim. "
+                      "Opcional: quando o VizieR voltar, rodar a Fase 8 de novo faz a busca "
+                      "completa, que cobre também catálogos pequenos.")
 AVISO_GAIA = ("Fonte Gaia DR3 não obtida (servidor sem resposta): posição, V estimada e nome "
               "Gaia ficam em branco; confira à mão no Gaia ou no VizieR antes de submeter.")
 # Descricao de catalogo VizieR que indica variabilidade: onde a estrela pode ter entrado
@@ -562,10 +562,10 @@ def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
               "VizieR oscila; só a busca que faltou é refeita), ou confira à mão como diz o "
               "aviso no topo de cada ficha em data/vsx/fichas.md.", flush=True)
     if so_lista:
-        print(f"\nEm {len(so_lista)}, a busca no VizieR foi só na lista de "
-              f"{len(CATALOGOS_VARIAVEIS_ESPELHO)} catálogos de variáveis (o VizieR de "
-              "Estrasburgo está fora). Dá para submeter; quando ele voltar, rodar de novo faz a "
-              "busca completa.", flush=True)
+        print(f"\n{len(so_lista)} prontas para submeter, com a busca no VizieR feita nos "
+              f"{len(CATALOGOS_VARIAVEIS_ESPELHO)} principais catálogos de variáveis (o VizieR "
+              "de Estrasburgo está fora). Opcional: quando ele voltar, rodar de novo faz a busca "
+              "completa.", flush=True)
     print("\nPróximo passo" + (" para as fichas completas" if pend else "") + ": conferir cada "
           "estrela no VSX online (vsx.aavso.org) e submeter; veja o Passo a passo no README.",
           flush=True)
