@@ -2,7 +2,15 @@ name: testes
 
 on:
   push:
+    paths-ignore: ["**.md", "docs/**", "LICENSE", "CITATION.cff"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "LICENSE", "CITATION.cff"]
+  workflow_dispatch:
+
+# um push novo no mesmo ramo cancela a rodada que ainda está em andamento
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   unidade:
