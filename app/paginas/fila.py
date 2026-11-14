@@ -118,7 +118,8 @@ def progresso():
         st.rerun()  # terminou: recarrega a pagina inteira com as candidatas novas
     log = execucao.ler_log()
     e = execucao.estado(log)
-    if not log or e["terminou"] or e["erro"] or e["cancelada"]:  # log antigo: veio do terminal
+    # sem log, ou log de uma rodada anterior: veio do terminal (log vazio = acabou de comecar)
+    if not execucao.LOG.exists() or e["terminou"] or e["erro"] or e["cancelada"]:
         st.info("Uma busca de candidatas está rodando, iniciada pelo terminal: o progresso "
                 "aparece lá. As candidatas novas entram na fila quando ela terminar.")
         return
@@ -147,7 +148,7 @@ def progresso_ficha():
         st.rerun()
     log = execucao.ler_log_ficha()
     e = execucao.estado_ficha(log)
-    if not log or e["erro"] or e["cancelada"] or e["terminou"]:
+    if not execucao.FICHA_LOG.exists() or e["erro"] or e["cancelada"] or e["terminou"]:
         st.info("A geração das fichas do VSX está rodando, iniciada pelo terminal: o progresso "
                 "aparece lá. As fichas entram na página Fichas quando ela terminar.")
         return
