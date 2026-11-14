@@ -69,6 +69,38 @@ def test_ficha_vsx():
     assert not eh_catalogo_variavel("Variability Upper Limits for Non-Variable Sources")
 
 
+def test_vizier_so_lista():
+    from unittest import mock
+    import types
+    from src import ficha_vsx as fv
+    from src import util
+    s = types.SimpleNamespace(ra=309.5, dec=41.3)
+    # CDS fora: busca so na lista, com aviso brando que nao bloqueia
+    with mock.patch.object(util, "VIZIER_ESPELHO", "vizier.idia.ac.za"), \
+            mock.patch.object(fv, "_vizier_lista", return_value=['J/ApJS/268/16/table1 (SPB) a 1.0"']) as lista, \
+            mock.patch.object(fv, "_vizier") as inteiro:
+        f = {}
+        assert fv._buscar_vizier(f, s) == fv.AVISO_VIZIER_LISTA
+        assert lista.called and not inteiro.called and "268/16" in f["vizier_variaveis"]
+    assert not fv.bloqueia(fv.AVISO_VIZIER_LISTA)
+    assert fv.bloqueia(fv.AVISO_VIZIER) and fv.bloqueia(fv.AVISO_VIZIER_LISTA + " | " + fv.AVISO_GAIA)
+    assert not fv.bloqueia("")
+    # na volta do CDS a busca completa e refeita
+    assert fv.plano({"avisos": fv.AVISO_VIZIER_LISTA}) == "completar:vizier"
+    # CDS no ar: busca em todos; completar troca o aviso antigo (outra redacao) pelo novo
+    antigo = "Busca no VizieR inteiro não feita (servidor sem resposta): confira à mão."
+    with mock.patch.object(util, "VIZIER_ESPELHO", None), \
+            mock.patch.object(fv, "_vizier", return_value=[]):
+        f = fv.completar_buscas({"avisos": antigo + " | " + fv.AVISO_GAIA}, s, ["vizier"])
+    assert f["avisos"] == fv.AVISO_GAIA
+    with tempfile.TemporaryDirectory() as d:
+        csv = Path(d) / "fichas.csv"
+        pd.DataFrame({"tic": [1, 2, 3], "avisos": [fv.AVISO_VIZIER, fv.AVISO_VIZIER_LISTA, ""]}
+                     ).to_csv(csv, index=False)
+        assert dados.fichas_com_aviso(csv) == {1}
+        assert dados.fichas_com_aviso(csv, so_bloqueio=False) == {1, 2}
+
+
 def test_ficha_vsx_retoma():
     from src.ficha_vsx import plano as _plano
     antigo = "Busca no VizieR inteiro não feita (servidor sem resposta): confira à mão em vizier.cds.unistra.fr ou num espelho antes de submeter."
@@ -109,6 +141,8 @@ def test_ficha_vsx_retoma():
     s = types.SimpleNamespace(ra=1.0, dec=2.0)
     def proibido(*a, **k):
         raise AssertionError("busca fora do plano")
+    from src import util
+    mock.patch.object(util, "VIZIER_ESPELHO", None).start()  # CDS no ar: busca em todos
     mock.patch.object(fv, "_vizier", lambda alvo: ['J/X/1 (Eclipsing binaries) a 2.0"']).start()
     mock.patch.object(fv, "_gaia", proibido).start()
     mock.patch.object(fv, "_medir", proibido).start()

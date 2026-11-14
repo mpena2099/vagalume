@@ -83,6 +83,9 @@ def _cds_responde(url: str, prazo_s: float = 15.0) -> bool:
         return False
 
 
+VIZIER_ESPELHO = None  # servidor do espelho quando o VizieR do CDS esta fora
+
+
 def usar_espelhos_cds():
     """Se o CDS de Estrasburgo nao entrega consultas, aponta SIMBAD e VizieR para espelhos.
 
@@ -111,6 +114,8 @@ def usar_espelhos_cds():
         print(f"  VizieR do CDS fora do ar e o espelho {espelho} nao serve ({type(e).__name__}).")
         return
     # o astroquery le conf.server uma vez, no default do __init__
+    global VIZIER_ESPELHO
+    VIZIER_ESPELHO = espelho
     VizierClass.__init__.__kwdefaults__["vizier_server"] = espelho
     print(f"  VizieR do CDS fora do ar: usando o espelho {espelho}.")
 

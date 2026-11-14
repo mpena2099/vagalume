@@ -250,7 +250,7 @@ def painel_ficha(sem_ficha: int, incompletas: int = 0):
         botao_fichas(sem_ficha + incompletas)
 
 
-def painel_busca(pendentes: int, sem_ficha: int = 0, incompletas: int = 0):
+def painel_busca(pendentes: int, sem_ficha: int = 0, incompletas: int = 0, parciais: int = 0):
     """Busca de mais candidatas: progresso se roda; resultado da ultima; botao se a fila acabou."""
     if execucao.rodando():
         progresso()
@@ -282,6 +282,12 @@ def painel_busca(pendentes: int, sem_ficha: int = 0, incompletas: int = 0):
         elif incompletas and not execucao.estado_ficha(execucao.ler_log_ficha())["terminou"]:
             st.markdown(f"**{incompletas} ficha(s) do VSX incompleta(s)** (veja os avisos na "
                         "página Fichas). Gerar de novo refaz só a busca que faltou.")
+        elif parciais:
+            st.markdown(f"**{parciais} ficha(s) com a busca no VizieR feita só na lista de "
+                        "catálogos de variáveis**, porque o VizieR de Estrasburgo está fora. Dá "
+                        "para submeter; quando ele voltar, gerar de novo faz a busca completa.")
+            if vizier_no_ar()[0]:
+                incompletas = parciais
         painel_ficha(sem_ficha, incompletas)
         botao_buscar("buscar_fim")
 
@@ -310,7 +316,9 @@ with conectar() as conn:
 pendentes = len(todos) - revisados
 confirmadas = set(todos.loc[todos["decisao"] == "confirmado", "tic"].astype(int))
 painel_busca(pendentes, len(dados.sem_ficha(confirmadas, VSX_DIR / "fichas.csv")),
-             len(confirmadas & dados.fichas_com_aviso(VSX_DIR / "fichas.csv")))
+             len(confirmadas & dados.fichas_com_aviso(VSX_DIR / "fichas.csv")),
+             len(confirmadas & (dados.fichas_com_aviso(VSX_DIR / "fichas.csv", so_bloqueio=False)
+                                - dados.fichas_com_aviso(VSX_DIR / "fichas.csv"))))
 if pendentes and not execucao.rodando():
     with st.sidebar.expander("Buscar mais candidatas"):
         st.caption(f"Ainda há {pendentes} pendente(s): o ideal é revisar antes.")

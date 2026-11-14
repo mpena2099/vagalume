@@ -77,6 +77,18 @@ CATALOGOS_VIZIER = {
     "J/AJ/155/39/table6": ("TIC-rotacao", "Prot"),
     "J/A+A/648/A44": ("Gaia-grande-amp", None),
 }
+# Fase 8 com o VizieR de Estrasburgo fora: o espelho do IDIA corta a busca em todos os
+# catalogos (502), mas responde consulta por nome. Catalogos de variaveis conferidos no IDIA
+# (so as tabelas de variaveis: a J/AJ/155/39/table5 lista estrelas nao variaveis)
+CATALOGOS_VARIAVEIS_ESPELHO = [
+    "B/vsx", "B/gcvs", "I/358/vclassre", "I/358/veb", "I/358/vrrlyr", "I/358/vcep",
+    "I/358/vlpv", "I/358/vst", "I/358/vrm", "I/358/vmsosc", "J/AJ/156/241", "J/ApJS/249/18",
+    "II/366", "J/ApJS/237/28", "J/ApJS/258/16", "J/ApJS/268/16", "J/ApJS/276/57",
+    "J/AJ/155/39/Variables", "J/AJ/155/39/table6", "J/A+A/648/A44", "J/AJ/151/68",
+    "J/ApJS/213/9", "II/264", "J/ApJS/247/44", "J/ApJS/259/11",
+]
+# aviso de ficha que nao impede a submissao (o app nao a conta como incompleta)
+MARCA_PODE_SUBMETER = "Pode submeter"
 # Wang+2025 (ApJ 986): 31 mil variaveis do TESS 2 min classificadas por random forest e
 # conferidas a olho. Fica no China-VO, fora do VizieR; table2 e o catalogo, table3 as
 # estrelas com tipo diferente por setor

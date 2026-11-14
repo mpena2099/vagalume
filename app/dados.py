@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import pandas as pd
 
-from config import DESLOCAMENTO_MAX_PX
+from config import DESLOCAMENTO_MAX_PX, MARCA_PODE_SUBMETER
 
 DECISOES = ("confirmado", "duvida", "descartado")
 
@@ -336,13 +336,22 @@ def migrar_envios(conn: sqlite3.Connection, fichas_csv: Path) -> int:
     return novos
 
 
-def fichas_com_aviso(fichas_csv: Path) -> set[int]:
-    """Fichas incompletas (com avisos): rodar a Fase 8 de novo refaz so a busca que faltou."""
+def fichas_com_aviso(fichas_csv: Path, so_bloqueio: bool = True) -> set[int]:
+    """Fichas incompletas: com aviso que impede a submissao (com so_bloqueio=False, tambem as
+    de aviso brando, como a busca so na lista de catalogos). Rodar a Fase 8 de novo refaz so
+    a busca que faltou."""
     try:
         df = pd.read_csv(fichas_csv, dtype=str, keep_default_na=False)
-        return set(df.loc[df["avisos"].str.strip() != "", "tic"].astype(int))
     except Exception:
         return set()
+    if "avisos" not in df:
+        return set()
+
+    def conta(avisos: str) -> bool:
+        partes = [a for a in avisos.split(" | ") if a.strip()]
+        return any(MARCA_PODE_SUBMETER not in a for a in partes) if so_bloqueio else bool(partes)
+
+    return set(df.loc[df["avisos"].map(conta), "tic"].astype(int))
 
 
 def com_ficha(fichas_csv: Path) -> set[int]:

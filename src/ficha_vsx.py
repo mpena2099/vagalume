@@ -38,10 +38,12 @@ from astropy.coordinates import SkyCoord
 from astroquery.vizier import Vizier
 
 from app.dados import carregar_candidatos
-from config import BLS_FLATTEN_D, LS_FLATTEN_D, SQLITE_PATH, VSX_DIR
+from config import (BLS_FLATTEN_D, CATALOGOS_VARIAVEIS_ESPELHO, LS_FLATTEN_D, MARCA_PODE_SUBMETER,
+                    SQLITE_PATH, VSX_DIR)
 from src.curvas import baixar_curva
 from src.detectar_sinal import _arrays, _flatten
 from src.periodo_setores import medir_periodo_setores
+from src import util
 from src.util import retry
 
 BTJD_PARA_BJD = 2457000.0
@@ -53,6 +55,11 @@ AVISO_VIZIER = ("Busca em todos os catálogos do VizieR não feita (servidor sem
                 "antes de rodar a Fase 8 de novo com o VizieR respondendo ou de conferir à mão: "
                 "busque as coordenadas desta ficha com raio de 30\" em vizier.cds.unistra.fr ou "
                 "em vizier.idia.ac.za.")
+AVISO_VIZIER_LISTA = (f"Busca no VizieR feita só nos {len(CATALOGOS_VARIAVEIS_ESPELHO)} catálogos de "
+                      "variáveis da lista (o VizieR de Estrasburgo estava fora e o espelho não "
+                      "faz a busca em todos). Fica de fora algum catálogo pequeno que tenha "
+                      f"publicado a estrela. {MARCA_PODE_SUBMETER} assim; quando o VizieR voltar, "
+                      "rodar a Fase 8 de novo faz a busca completa.")
 AVISO_GAIA = ("Fonte Gaia DR3 não obtida (servidor sem resposta): posição, V estimada e nome "
               "Gaia ficam em branco; confira à mão no Gaia ou no VizieR antes de submeter.")
 # Descricao de catalogo VizieR que indica variabilidade: onde a estrela pode ter entrado
@@ -273,27 +280,60 @@ def _buscar_gaia(ficha: dict, s) -> str | None:
     return None
 
 
+def _vizier_lista(alvo: SkyCoord) -> list[str]:
+    """Os catalogos de CATALOGOS_VARIAVEIS_ESPELHO a ate 30", numa consulta so."""
+    # ~1 min no espelho, as vezes mais: prazo maior que o das outras consultas
+    res = retry(lambda: Vizier(columns=["_r"], row_limit=5, timeout=3 * CONSULTA_TIMEOUT_S)
+                .query_region(alvo, radius=30 * u.arcsec, catalog=CATALOGOS_VARIAVEIS_ESPELHO),
+                "VizieR", retries=CONSULTA_TENTATIVAS)
+    return [f'{nome} ({str(res[nome].meta.get("description", ""))[:70]}) a '
+            f'{float(np.min(res[nome]["_r"])):.1f}"' for nome in res.keys()]
+
+
 def _buscar_vizier(ficha: dict, s) -> str | None:
-    """Preenche a busca em todos os catalogos do VizieR. Devolve o aviso se nao respondeu."""
-    print("  buscando em todos os catálogos do VizieR (pode levar minutos)", flush=True)
+    """Preenche a busca em todos os catalogos do VizieR. Devolve o aviso se nao respondeu, ou
+    o aviso brando se, com o CDS fora, so deu para buscar na lista de catalogos."""
+    alvo = SkyCoord(s.ra, s.dec, unit="deg")
+    if util.VIZIER_ESPELHO:
+        print(f"  VizieR de Estrasburgo fora: buscando nos {len(CATALOGOS_VARIAVEIS_ESPELHO)} "
+              f"catálogos de variáveis da lista, em {util.VIZIER_ESPELHO}", flush=True)
+        busca, aviso = _vizier_lista, AVISO_VIZIER_LISTA
+    else:
+        print("  buscando em todos os catálogos do VizieR (pode levar minutos)", flush=True)
+        busca, aviso = _vizier, None
     try:
-        ficha["vizier_variaveis"] = ("; ".join(_vizier(SkyCoord(s.ra, s.dec, unit="deg")))
+        ficha["vizier_variaveis"] = ("; ".join(busca(alvo))
                                      or "nenhum catalogo de variaveis a 30\"")
     except Exception as e:
         print(f"  VizieR sem resposta ({type(e).__name__}); seguindo sem essa busca", flush=True)
         ficha["vizier_variaveis"] = "busca não feita"
         return AVISO_VIZIER
-    return None
+    return aviso
 
 
 BUSCAS = {"gaia": _buscar_gaia, "vizier": _buscar_vizier}
-AVISO_DE = {"gaia": AVISO_GAIA, "vizier": AVISO_VIZIER}
+
+
+def tipo_aviso(aviso: str) -> str | None:
+    """'gaia', 'vizier' ou None. Pelo tipo, nao pelo texto exato: fichas antigas tem outra
+    redacao do aviso."""
+    aviso = aviso.strip()
+    if aviso.startswith("Fonte Gaia DR3"):
+        return "gaia"
+    if aviso.startswith("Busca") and "VizieR" in aviso:
+        return "vizier"
+    return None
+
+
+def bloqueia(avisos) -> bool:
+    """A ficha tem aviso que impede a submissao (o da busca so na lista de catalogos nao)."""
+    return any(a.strip() and MARCA_PODE_SUBMETER not in a for a in str(avisos or "").split(" | "))
 
 
 def completar_buscas(ficha: dict, s, faltas: list[str]) -> dict:
     """Refaz so as buscas em `faltas` e atualiza `avisos`; o resto da ficha fica como esta."""
     restantes = [a for a in str(ficha.get("avisos") or "").split(" | ")
-                 if a and a not in [AVISO_DE[k] for k in faltas]]
+                 if a and tipo_aviso(a) not in faltas]
     for k in faltas:
         aviso = BUSCAS[k](ficha, s)
         if aviso:
@@ -317,13 +357,10 @@ def plano(anterior: dict | None, refazer: bool = False) -> str:
         return "manter"
     faltas = set()
     for aviso in filter(None, (x.strip() for x in avisos.split("|"))):
-        # pelo tipo, nao pelo texto exato: fichas antigas tem outra redacao do aviso
-        if aviso.startswith("Fonte Gaia DR3"):
-            faltas.add("gaia")
-        elif aviso.startswith("Busca") and "VizieR" in aviso:
-            faltas.add("vizier")
-        else:
+        tipo = tipo_aviso(aviso)
+        if tipo is None:
             return "nova"  # aviso que esta logica nao sabe completar
+        faltas.add(tipo)
     if not faltas:
         return "nova"
     return "completar:" + ",".join(k for k in ("gaia", "vizier") if k in faltas)
@@ -470,7 +507,7 @@ def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
                           + " e ".join(nomes[k] for k in faltas) + ")", flush=True)
                     f = completar_buscas(dict(anteriores[tic]), s, faltas)
                     f["decisao"] = s.decisao
-                    contagem["incompleta" if f.get("avisos") else "completada"] += 1
+                    contagem["incompleta" if bloqueia(f.get("avisos")) else "completada"] += 1
                 else:
                     print(f"\n[{i}/{n}] TIC {tic}", flush=True)
                     f = montar_ficha(s)
@@ -482,7 +519,7 @@ def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
                 continue
             atuais[tic] = f
             saida = gravar()
-            print(f"  {'ainda incompleta' if f.get('avisos') else 'pronta'}: período {f['periodo_d']:.5f} d, tipo sugerido {f['tipo_sugerido']} "
+            print(f"  {'ainda incompleta' if bloqueia(f.get('avisos')) else 'pronta'}: período {f['periodo_d']:.5f} d, tipo sugerido {f['tipo_sugerido']} "
                   f"({_tempo(time.monotonic() - t0)})", flush=True)
     except KeyboardInterrupt:
         print("\nInterrompido.", flush=True)
@@ -492,7 +529,8 @@ def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
         print("Nenhuma ficha pronta.", flush=True)
         return None
     saida = gravar()
-    pend = [f for f in fichas if f.get("avisos")]
+    pend = [f for f in fichas if bloqueia(f.get("avisos"))]
+    so_lista = [f for f in fichas if AVISO_VIZIER_LISTA in str(f.get("avisos"))]
     feitas = sum(contagem.values())
     print(f"{len(fichas)} ficha{'s' if len(fichas) != 1 else ''} em {_caminho(saida)} "
           f"(curvas em {_caminho(VSX_DIR)}/<tic>_fase.png): {contagem['mantida']} "
@@ -523,6 +561,11 @@ def run(decisoes=("confirmado",), refazer: bool = False) -> Path | None:
         print("  O que fazer: rode `python -u src/ficha_vsx.py` de novo mais tarde (o servidor do "
               "VizieR oscila; só a busca que faltou é refeita), ou confira à mão como diz o "
               "aviso no topo de cada ficha em data/vsx/fichas.md.", flush=True)
+    if so_lista:
+        print(f"\nEm {len(so_lista)}, a busca no VizieR foi só na lista de "
+              f"{len(CATALOGOS_VARIAVEIS_ESPELHO)} catálogos de variáveis (o VizieR de "
+              "Estrasburgo está fora). Dá para submeter; quando ele voltar, rodar de novo faz a "
+              "busca completa.", flush=True)
     print("\nPróximo passo" + (" para as fichas completas" if pend else "") + ": conferir cada "
           "estrela no VSX online (vsx.aavso.org) e submeter; veja o Passo a passo no README.",
           flush=True)
