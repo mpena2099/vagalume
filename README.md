@@ -1,6 +1,7 @@
 # Vagalume
 
 [![testes](https://github.com/mpena2099/vagalume/actions/workflows/testes.yml/badge.svg)](https://github.com/mpena2099/vagalume/actions/workflows/testes.yml)
+[![Documentação](https://img.shields.io/badge/docs-online-2e7d32.svg)](https://mpena2099.github.io/vagalume/)
 [![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](requirements.txt)
 [![demo: online](https://img.shields.io/badge/demo-online-2e7d32.svg)](https://vagalume.streamlit.app)
@@ -8,7 +9,7 @@
 
 Pipeline pessoal de mineração de dados astronômicos que procura **estrelas variáveis ainda não catalogadas** nas curvas de luz públicas do satélite **TESS** (NASA), descarta as já conhecidas e entrega candidatas prontas para submissão ao **VSX**, o catálogo internacional de estrelas variáveis da AAVSO.
 
-Documentação completa: https://mpena2099.github.io/vagalume/
+Documentação completa: [mpena2099.github.io/vagalume](https://mpena2099.github.io/vagalume/)
 
 > **Situação:** nenhuma variável foi submetida ao VSX ainda. A revisão do primeiro campo (Cygnus, setor 55) tem 4 candidatas confirmadas, aguardando a submissão. Os períodos e tipos são sugestões do pipeline, conferidas só a olho. Trate cada resultado como candidata, não como descoberta.
 
