@@ -1,0 +1,42 @@
+site_name: Vagalume
+site_description: Estrelas variáveis novas nas curvas de luz do TESS
+site_url: https://mpena2099.github.io/vagalume/
+repo_url: https://github.com/mpena2099/vagalume
+docs_dir: docs
+
+theme:
+  name: material
+  language: pt-BR
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Mudar para o modo escuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Mudar para o modo claro
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Início: index.md
+  - Começar: comecar.md
+  - Como funciona: como-funciona.md
+  - Revisão e treino: revisao.md
+  - Submeter ao VSX: submeter_vsx.md
+  - Discussões: discussoes.md
+  - Créditos: creditos.md

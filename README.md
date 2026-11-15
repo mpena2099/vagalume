@@ -8,6 +8,8 @@
 
 Pipeline pessoal de mineração de dados astronômicos que procura **estrelas variáveis ainda não catalogadas** nas curvas de luz públicas do satélite **TESS** (NASA), descarta as já conhecidas e entrega candidatas prontas para submissão ao **VSX**, o catálogo internacional de estrelas variáveis da AAVSO.
 
+Documentação completa: https://mpena2099.github.io/vagalume/
+
 > **Situação:** nenhuma variável foi submetida ao VSX ainda. A revisão do primeiro campo (Cygnus, setor 55) tem 4 candidatas confirmadas, aguardando a submissão. Os períodos e tipos são sugestões do pipeline, conferidas só a olho. Trate cada resultado como candidata, não como descoberta.
 
 ![Ilustração artística de uma binária eclipsante](docs/img/eso1311a.jpg)
