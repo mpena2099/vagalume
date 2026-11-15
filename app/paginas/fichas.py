@@ -2,6 +2,7 @@
 
 import sqlite3
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -225,7 +226,17 @@ def tipo_inicial(tic: int) -> str | None:
 
 def pendencias_de(tic: int, achados) -> list[tuple[str, str]]:
     atual = tipo_de(tic)
-    return vsx.pendencias(fichas[tic], atual, achados, confirmado=atual == tipo_salvo(tic))
+    itens = vsx.pendencias(fichas[tic], atual, achados, confirmado=atual == tipo_salvo(tic))
+    if not (VSX_DIR / f"{tic}_fase.png").exists():
+        itens.append(("bloqueia", "Falta a curva em fase (anexo obrigatório): gere as fichas de novo"))
+    tri = fichas[tic].get("figura_triagem")
+    if not tri or not ((ROOT / tri) if not Path(tri).is_absolute() else Path(tri)).exists():
+        itens.append(("atencao", "Falta a figura da triagem (prova de que o sinal vem do alvo)"))
+    limite = vsx.limite_envio(tic, envios.to_dict("records") if not envios.empty else [],
+                              date.today())
+    if limite:
+        itens.append(limite)
+    return itens
 
 
 def tipo_de(tic: int) -> str | None:
@@ -248,6 +259,10 @@ def o_que_falta(tic: int) -> str:
             curtos.append("Blend: sinal da vizinha")
         elif texto.startswith(("Vizinha", "Blend")):
             curtos.append("Conferir vizinha (blend)")
+        elif texto.startswith(("Aguarde o aceite", "Limite do VSX")):
+            curtos.append("Aguardar o VSX")
+        elif texto.startswith("Falta a"):
+            curtos.append("Anexo faltando")
         elif nivel == "bloqueia":
             curtos.append("Aviso da ficha")
     return ", ".join(dict.fromkeys(curtos)) or "Nada"
@@ -261,7 +276,7 @@ def situacao_local(tic: int) -> str:
     if pd.notna(e.get("enviada_em")) and e.get("enviada_em"):
         return "enviada"
     pend = pendencias_de(tic, [])
-    return "falta resolver" if any(n == "bloqueia" for n, _ in pend) else "pronta"
+    return "falta resolver" if any(n != "ok" for n, _ in pend) else "pronta"
 
 
 def vizinha(lista: list[int], atual: int, passo: int) -> int | None:
@@ -356,10 +371,14 @@ st.subheader(f"TIC {tic}" + (f" · {f['decisao'].capitalize()}" if f.get("decisa
 aba_conferir, aba_enviar = st.tabs(["Conferir", "Enviar"])
 
 with aba_conferir:
-    st.info(f"**Próximo passo:** {bloqueadas[0][1]}" if bloqueadas
-            else "**Próximo passo:** Tudo certo: siga para a aba Enviar.")
-    for nivel, texto in bloqueadas[1:]:
-        st.markdown(f"{ICONES[nivel]} {texto}")
+    if not abertas and achados is not None:
+        st.success("**Pode enviar.** Tudo conferido: siga para a aba Enviar.\n\n"
+                   + "\n".join(f"- {t}" for n, t in pend if n == "ok"))
+    else:
+        st.info(f"**Ainda não envie.** Próximo passo: {bloqueadas[0][1]}" if bloqueadas
+                else "**Ainda não envie:** o VSX não foi conferido.")
+        for nivel, texto in bloqueadas[1:]:
+            st.markdown(f"{ICONES[nivel]} {texto}")
     if MARCA_PODE_SUBMETER in (f.get("avisos") or ""):
         with st.expander("Por que posso enviar com o VizieR do CDS fora do ar?"):
             st.markdown(

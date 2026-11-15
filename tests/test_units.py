@@ -1086,6 +1086,27 @@ def test_migrar_envio_antigo():
     assert e["tipo_final"] == "EB" and e["nome_vsx"] == "V1" and isinstance(e["aceita_em"], str)
 
 
+def test_limite_envio():
+    import datetime as dt
+    from app import vsx
+    hoje = dt.date(2026, 11, 15)
+    assert vsx.limite_envio(1, [], hoje) is None
+    pend = [{"tic": 2, "enviada_em": "2026-11-10T10:00:00", "aceita_em": None}]
+    r = vsx.limite_envio(1, pend, hoje)
+    assert r[0] == "bloqueia" and "TIC 2" in r[1]
+    assert vsx.limite_envio(2, pend, hoje) is None
+    aceita = [{"tic": 2, "enviada_em": "2026-11-01", "aceita_em": "2026-11-12"}]
+    assert vsx.limite_envio(1, aceita + pend[:0], hoje) is None
+    cinco = aceita + [{"tic": 10 + i, "enviada_em": "2026-11-13", "aceita_em": None}
+                      for i in range(5)]
+    assert vsx.limite_envio(1, cinco, hoje)[1].startswith("Limite do VSX")
+    velhas = aceita + [{"tic": 10 + i, "enviada_em": "2026-11-01", "aceita_em": None}
+                       for i in range(5)]
+    assert vsx.limite_envio(1, velhas, hoje) is None
+    assert vsx.limite_envio(1, [{"tic": 3, "enviada_em": float("nan"), "aceita_em": None}],
+                            hoje) is None
+
+
 if __name__ == "__main__":
     for nome, fn in list(globals().items()):
         if nome.startswith("test_"):

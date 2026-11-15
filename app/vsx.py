@@ -43,6 +43,35 @@ def aceite_detectado(achados: list[dict] | None, raio: float = RAIO_ACEITE_ARCSE
     return mais_perto.get("nome") or f"OID {mais_perto.get('oid')}"
 
 
+LIMITE_SEMANA = 5
+
+
+def limite_envio(tic, envios: list[dict], hoje) -> tuple[str, str] | None:
+    """Regra do VSX: usuario novo so tem uma submissao ate a primeira ser aprovada; depois,
+    5 por semana. `envios`: dicts com tic, enviada_em, aceita_em (datas ISO ou vazio)."""
+    import datetime as dt
+
+    def data(v):
+        try:
+            return dt.date.fromisoformat(str(v)[:10]) if v and v == v else None
+        except ValueError:
+            return None
+
+    outros = [e for e in envios if e.get("tic") != tic and data(e.get("enviada_em"))]
+    if any(e.get("tic") == tic and data(e.get("enviada_em")) for e in envios):
+        return None
+    if not any(data(e.get("aceita_em")) for e in envios):
+        abertas = [e["tic"] for e in outros if not data(e.get("aceita_em"))]
+        if abertas:
+            return ("bloqueia", f"Aguarde o aceite da TIC {abertas[0]}: usuário novo no VSX só "
+                                "pode ter uma submissão até a primeira ser aprovada")
+        return None
+    semana = [e for e in outros if (hoje - data(e["enviada_em"])).days < 7]
+    if len(semana) >= LIMITE_SEMANA:
+        return ("bloqueia", f"Limite do VSX: {LIMITE_SEMANA} submissões por semana já usadas")
+    return None
+
+
 def pendencias(f: dict, tipo_final: str | None, vsx: list[dict] | None,
                confirmado: bool = True) -> list[tuple[str, str]]:
     """(nivel, texto) com nivel em ok, atencao ou bloqueia. `confirmado`: o `tipo_final` foi
