@@ -33,5 +33,6 @@ def consultar_vsx(ra: float, dec: float, raio_arcsec: float = 60,
             "dist_arcsec": _distancia_arcsec(ra, dec, float(o["RA2000"]),
                                              float(o["Declination2000"])),
             "url": URL_DETALHE.format(oid=o.get("OID", "")),
+            "ra": float(o["RA2000"]), "dec": float(o["Declination2000"]),
         })
     return sorted(achados, key=lambda a: a["dist_arcsec"])

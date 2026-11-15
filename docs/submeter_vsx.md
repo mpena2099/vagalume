@@ -15,7 +15,7 @@ A página dá o veredito: **"Pode enviar"**, com a lista do que foi conferido, o
 3. **Confira o período.** A Fase 8 mede o instante do mínimo em cada setor usado e ajusta uma reta T = T0 + n·P (O-C). Se o maior desvio é menor que 0,02 em fase, o alerta some e a ficha traz o período, o erro e a época desse ajuste. Se não, o alerta "períodos dos setores não alinham" traz o O-C de cada setor: abra a figura e veja se os mínimos de setores diferentes caem no mesmo lugar. Se não caem, o período ainda não está bom para enviar. Com um setor só não há o que conferir.
    Antes do O-C, a Fase 8 compara a profundidade dos eclipses de ciclo par e de ciclo ímpar (largura medida na própria curva, erro da mediana de cada lado). Se a diferença passa de 3 sigmas no conjunto e tem o mesmo sinal em todo setor com eclipses suficientes, o período medido era metade do orbital: a ficha usa 2P, com a época no mínimo mais fundo, e refaz O-C, amplitude e figura. A página Fichas mostra "Eclipses pares e ímpares iguais" ou "Período dobrado: eclipses pares e ímpares diferem N σ", e o comentário em inglês cita as profundidades. Com poucos eclipses a ficha avisa que não há decisão: confira na figura se os dois mínimos têm a mesma profundidade.
 4. **Veja a vizinha.** A ficha diz se o blend está resolvido (pico no alvo e vizinha a mais de 1 pixel), se o sinal parece da vizinha ou se ficou para você conferir (explicação logo abaixo). Nos dois últimos casos, abra o painel "Mapa por pixel e curvas da triagem".
-5. **Busque no VSX online.** A página Fichas faz isso sozinha e lista o que achar; para conferir à mão, em [vsx.aavso.org](https://vsx.aavso.org), use a busca por coordenadas com a RA e a Dec da ficha e raio de 1 minuto de arco. Se a estrela já aparece, alguém submeteu antes: não envie.
+5. **Busque no VSX online.** A página Fichas faz isso sozinha e lista o que achar; para conferir à mão, em [vsx.aavso.org](https://vsx.aavso.org), use a busca por coordenadas com a RA e a Dec da ficha e raio de 2 minutos de arco. Se a estrela já aparece, alguém submeteu antes: não envie. A página usa o mesmo raio do Spot Check do formulário (120"), e cada variável que ele lista aparece na página com o veredito: a até 30" é a mesma estrela (não envie); com o mesmo período, o sinal pode ser dela (não envie); de 30" a 60", confira; além de 60" (3 pixels do TESS) e com período diferente, é outra estrela, e o comentário em inglês já a cita ao moderador.
 
 ### O que é suspeita de blend
 
@@ -52,15 +52,15 @@ Cada campo da página Fichas tem um botão de copiar, e o comentário em inglês
 
 | No formulário do VSX | Da ficha |
 |---|---|
-| Nome e identificadores | "Outros nomes": o TIC e o Gaia DR3. Se quiser, dê um nome provisório seu (ex.: "VGL V1") |
-| Coordenadas (RA, Dec) | "RA (Gaia DR3)" e "Dec (Gaia DR3)", em graus |
+| Primary name e Other names | "Nome principal" (o TIC, porque a estrela foi achada no banco do TESS; depois clique em **Check name**) e "Outros nomes" (Gaia DR3, 2MASS, UCAC4, WISEA e, se houver, TYC e HIP, tirados do catálogo TIC do MAST, um por linha e no formato do Dictionary of Nomenclature). Sem resposta do MAST, só o Gaia DR3 |
+| Coordenadas (RA, Dec) | Cole o campo "Coordenadas J2000" (graus) e clique em **Spot Check** para o VSX confirmar a posição; a forma sexagesimal também está na ficha ("RA (Gaia DR3)" e "Dec (Gaia DR3)") |
 | Tipo de variável | O tipo que você decidiu no passo 1 (EA, EB, EW, ROT...) |
 | Período | "Período (d)" |
 | Época | "Época do mínimo (BJD)". O VSX fala em HJD, mas aceita o BJD_TDB do TESS (a diferença é de cerca de um minuto); o comentário avisa isso |
 | Magnitude máxima | "Magnitude V (máxima)", na banda V |
 | Magnitude mínima | "Amplitude (mag, TESS)": marque **"Minimum is an amplitude"** e escreva **TESS** no campo de banda |
 | Fonte dos dados | "TESS QLP (FFI)" e os setores da ficha. O guia do VSX recomenda o PDCSAP, que é do SPOC; para estrela observada só nas imagens completas (FFI), o QLP é o produto disponível |
-| Anexos | A curva em fase `data/vsx/<tic>_fase.png` (obrigatória) e a figura da triagem `data/triagem/<tic>.png`. Mande as duas: o VSX avisa que a abertura do TESS junta luz de vizinhas até ~120", e o mapa por pixel da triagem é a prova de que o sinal vem do alvo |
+| Anexos | A curva em fase `data/vsx/<tic>_fase.png` (obrigatória) e a figura da triagem `data/triagem/<tic>.png`. Mande as duas: o VSX avisa que a abertura do TESS junta luz de vizinhas até ~120", e o mapa por pixel da triagem é a prova de que o sinal vem do alvo. Em campo lotado, como no plano da Galáxia, mande também a carta de identificação `data/vsx/<tic>_carta.png` (DSS2 Red, 5'x5', alvo e vizinhas marcados), gerada pelo botão "Gerar carta de identificação" na aba Enviar |
 
 O comentário em inglês gerado pela página diz como a estrela foi achada (TESS QLP e setores), o período medido com todos os setores (e por que é 2P, quando os eclipses pares e ímpares diferem), a época em BJD_TDB, a amplitude, que a variação fica abaixo da precisão do ASAS-SN e do ZTF quando é o caso (o VSX incentiva combinar com levantamentos de solo), o que as buscas no VSX e no VizieR acharam e, se houver, a vizinha e o que o mapa por pixel mostra.
 

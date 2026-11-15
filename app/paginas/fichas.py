@@ -30,7 +30,7 @@ def salvar_tipo(tic: int):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def consultar(ra: float, dec: float) -> list[dict]:
-    return vsx.consultar_vsx(ra, dec)
+    return vsx.consultar_vsx(ra, dec, raio_arcsec=vsx.RAIO_VSX_ARCSEC)
 
 
 def salvar_envio(tic: int, origem: str):
@@ -69,13 +69,21 @@ def _fmt(valor, formato: str) -> str:
     return "?" if valor is None else format(valor, formato)
 
 
-def campos(f: dict, tipo_final: str | None = None) -> list[tuple[str, str, str]]:
+@st.cache_data(show_spinner=False, persist="disk")
+def ids_tic(tic: int) -> list[str]:
+    """Outros nomes da estrela pelo catalogo TIC do MAST (cache em disco: nao mudam)."""
+    from astroquery.mast import Catalogs
+    t = Catalogs.query_criteria(catalog="TIC", ID=int(tic))
+    return vsx.nomes_catalogo({k: t[k][0] for k in t.colnames}) if len(t) else []
+
+
+def campos(f: dict, tipo_final: str | None = None,
+           outros: list[str] | None = None) -> list[tuple[str, str, str]]:
     """(rotulo, valor para copiar, ajuda) dos campos do formulario do VSX."""
-    itens = []
-    nomes = f"TIC {f['tic']}"
-    if "gaia_dr3" in f:
-        nomes += f", Gaia DR3 {f['gaia_dr3']}"
-    itens.append(("Outros nomes", nomes, ""))
+    itens = [("Nome principal", f"TIC {f['tic']}", "depois clique em Check name")]
+    if not outros:
+        outros = [f"Gaia DR3 {f['gaia_dr3']}"] if "gaia_dr3" in f else []
+    itens.append(("Outros nomes", "\n".join(outros), "um por linha, como o VSX pede"))
     if tipo_final:
         itens.append(("Tipo", tipo_final, f.get("motivo_tipo", "")))
     elif "tipo_sugerido" in f:
@@ -89,6 +97,11 @@ def campos(f: dict, tipo_final: str | None = None) -> list[tuple[str, str, str]]
         itens.append(("Mínimo secundário (fase)", _fmt(f["fase_secundario"], ".3f"), ""))
     if "epoca_bjd" in f:
         itens.append(("Época do mínimo (BJD)", _fmt(f["epoca_bjd"], ".4f"), ""))
+    if "gaia_ra" in f and "gaia_dec" in f:
+        graus, sexagesimal = vsx.coordenadas_j2000(f["gaia_ra"], f["gaia_dec"])
+        itens.append(("Coordenadas J2000 (colar no VSX)", graus,
+                      "cole no campo de coordenadas e confira no Spot Check"))
+        itens.append(("Coordenadas J2000 (sexagesimal)", sexagesimal, ""))
     if "gaia_ra" in f:
         itens.append(("RA (Gaia DR3, graus)", _fmt(f["gaia_ra"], ".6f"), ""))
     if "gaia_dec" in f:
@@ -461,7 +474,13 @@ with aba_enviar:
     tipo_atual = st.session_state.get(f"tipo_{tic}")
     st.markdown("**Campos do New Star Wizard**")
     colunas = st.columns(2)
-    for i, (rotulo, valor, ajuda) in enumerate(campos(f, tipo_atual)):
+    try:
+        with st.spinner("Buscando os outros nomes da estrela no TIC..."):
+            outros = ids_tic(tic)
+    except Exception:
+        outros = None
+        st.caption("O MAST não respondeu: os outros nomes ficaram só com o Gaia DR3.")
+    for i, (rotulo, valor, ajuda) in enumerate(campos(f, tipo_atual, outros)):
         with colunas[i % 2]:
             st.markdown(f"**{rotulo}**")
             st.code(valor)
@@ -470,12 +489,27 @@ with aba_enviar:
     st.markdown("**Comentário para o moderador (em inglês)**")
     st.code(vsx.comentario(f, tipo_atual, achados), language=None, wrap_lines=True)
     st.markdown("**Anexos**")
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
         anexo("Baixar curva em fase", figura, f"TIC{tic}_fase.png", f"dl_fase_{tic}")
     with c2:
         anexo("Baixar figura da triagem", triagem or Path("triagem"), f"TIC{tic}_triagem.png",
               f"dl_tri_{tic}")
+    with c3:
+        carta = VSX_DIR / f"{tic}_carta.png"
+        if carta.exists():
+            anexo("Baixar carta de identificação", carta, f"TIC{tic}_carta.png", f"dl_carta_{tic}")
+        elif "gaia_ra" in f and "gaia_dec" in f \
+                and st.button("Gerar carta de identificação", key=f"carta_{tic}"):
+            from src.carta import gerar_carta
+            with st.spinner("Baixando a imagem do DSS..."):
+                ok = gerar_carta(tic, f["gaia_ra"], f["gaia_dec"],
+                                 [(a["ra"], a["dec"]) for a in achados or [] if "ra" in a],
+                                 carta)
+            if ok:
+                st.rerun()
+            else:
+                st.error("Não foi possível baixar a imagem do DSS. Tente de novo.")
     st.divider()
     st.session_state.setdefault(f"env_{tic}", bool(pd.notna(e.get("enviada_em")) and e.get("enviada_em")))
     st.session_state.setdefault(f"ace_{tic}", bool(pd.notna(e.get("aceita_em")) and e.get("aceita_em")))

@@ -1052,7 +1052,7 @@ def test_comentario_vsx():
     from app import vsx
     c = vsx.comentario(_ficha(), "EA", [])
     assert "1.23456" in c and "TESS" in c and "—" not in c
-    assert "No known VSX variable within 1'" in c and "Gaia DR3 123" in c
+    assert "No known VSX variable within 2'" in c and "Gaia DR3 123" in c
     assert "brighter Gaia neighbour" not in c
     assert "Gaia neighbour (less than 4 mag fainter)" in vsx.comentario(_ficha(suspeito_blend=True), "EA", [])
     assert "No known VSX" not in vsx.comentario(_ficha(), "EA", None)
@@ -1105,6 +1105,47 @@ def test_limite_envio():
     assert vsx.limite_envio(1, velhas, hoje) is None
     assert vsx.limite_envio(1, [{"tic": 3, "enviada_em": float("nan"), "aceita_em": None}],
                             hoje) is None
+
+
+def test_coordenadas_j2000():
+    from app.vsx import coordenadas_j2000
+    assert coordenadas_j2000(309.59941949996, 41.05187172336) == (
+        "309.599419 +41.051872", "20 38 23.861 +41 03 06.738")
+    sexagesimal = coordenadas_j2000(309.59941949996, -41.05187172336)[1]
+    assert sexagesimal.split()[3] == "-41", sexagesimal
+
+
+def test_escala_px():
+    from src.carta import escala_px
+    assert escala_px(5, 500) == 0.6
+    assert abs(escala_px(10, 1000) - 0.6) < 1e-12
+
+
+def test_vsx_vizinha_120():
+    from app import vsx
+    f = {"periodo_d": 3.98776, "blend_motivo": "pico no alvo (0.7 px); vizinha a 27\""}
+    rot = {"nome": "Gaia DR3 2064819310104461440", "tipo": "ROT", "periodo": "",
+           "max": "14.82 G", "min": "14.86 G", "dist_arcsec": 98.8}
+    p = vsx.pendencias(f, "EA", [rot])
+    assert ("ok", next(t for n, t in p if "98\"" in t or "99\"" in t)) in p
+    c = vsx.comentario(f, "EA", [rot])
+    assert "lies 99\" away (about 5 TESS pixels); the pixel map peaks on the target." in c
+    assert "ROT, 14.82-14.86 G)" in c
+    mesmo = dict(rot, periodo="7.9755")
+    assert any(n == "bloqueia" and "mesmo período" in t for n, t in vsx.pendencias(f, "EA", [mesmo]))
+    medio = dict(rot, dist_arcsec=45.0)
+    assert any(n == "atencao" for n, t in vsx.pendencias(f, "EA", [medio]))
+    assert "VSX variable within" not in vsx.comentario(f, "EA", [dict(rot, dist_arcsec=10.0)])
+
+
+def test_nomes_catalogo():
+    from app import vsx
+    linha = {"GAIA": "2064816282152023680", "TWOMASS": "20382386+4103066",
+             "UCAC": "656-090678", "ALLWISE": "J203823.88+410306.3", "TYC": "--", "HIP": None}
+    assert vsx.nomes_catalogo(linha) == ["Gaia DR3 2064816282152023680",
+                                         "2MASS J20382386+4103066", "UCAC4 656-090678",
+                                         "WISEA J203823.88+410306.3"]
+    assert vsx.nomes_catalogo({}) == []
 
 
 if __name__ == "__main__":

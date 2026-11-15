@@ -26,6 +26,39 @@ TIPOS_VSX = {
 
 
 RAIO_ACEITE_ARCSEC = 10
+# mesmo raio do Spot Check do formulario do VSX
+RAIO_VSX_ARCSEC = 120
+PIXEL_TESS_ARCSEC = 21
+
+
+def _mesmo_periodo(p1, p2, tol=0.01) -> bool:
+    try:
+        p1, p2 = float(p1), float(p2)
+    except (TypeError, ValueError):
+        return False
+    return p1 > 0 and p2 > 0 and any(abs(p1 / p2 - r) <= tol * r for r in (1.0, 0.5, 2.0))
+
+
+def _faixa_mag(mx, mn) -> str:
+    """', 14.82-14.86 G' a partir de '14.82 G' e '14.86 G' do VSX ('' sem os dois)."""
+    if not mx or not mn:
+        return ""
+    a, b = str(mx).split(), str(mn).split()
+    banda = a[1] if len(a) > 1 else "mag"
+    return f", {a[0]}-{b[0]} {banda}"
+
+
+def _rotulo_vsx(a: dict) -> str:
+    extra = [x for x in (a.get("tipo"), f"P {a['periodo']} d" if a.get("periodo") else "") if x]
+    return a["nome"] + (f" ({', '.join(extra)})" if extra else "")
+
+
+def coordenadas_j2000(ra: float, dec: float) -> tuple[str, str]:
+    """(graus, sexagesimal) da posicao, para colar no VSX."""
+    from astropy.coordinates import SkyCoord
+
+    c = SkyCoord(ra, dec, unit="deg")
+    return f"{ra:.6f} {dec:+.6f}", c.to_string("hmsdms", sep=" ", precision=3)
 
 
 def aceite_detectado(achados: list[dict] | None, raio: float = RAIO_ACEITE_ARCSEC) -> str | None:
@@ -44,6 +77,28 @@ def aceite_detectado(achados: list[dict] | None, raio: float = RAIO_ACEITE_ARCSE
 
 
 LIMITE_SEMANA = 5
+
+
+def nomes_catalogo(linha: dict) -> list[str]:
+    """Designacoes no formato do Dictionary of Nomenclature, a partir de uma linha do TIC."""
+    def v(k):
+        x = linha.get(k)
+        return None if x is None or str(x).strip() in ("", "--", "nan", "None") else str(x).strip()
+
+    nomes = []
+    if v("GAIA"):
+        nomes.append(f"Gaia DR3 {v('GAIA')}")
+    if v("TWOMASS"):
+        nomes.append(f"2MASS J{v('TWOMASS')}")
+    if v("UCAC"):
+        nomes.append(f"UCAC4 {v('UCAC')}")
+    if v("ALLWISE"):
+        nomes.append(f"WISEA {v('ALLWISE')}")
+    if v("TYC"):
+        nomes.append(f"TYC {v('TYC')}")
+    if v("HIP"):
+        nomes.append(f"HIP {v('HIP')}")
+    return nomes
 
 
 def limite_envio(tic, envios: list[dict], hoje) -> tuple[str, str] | None:
@@ -135,15 +190,24 @@ def pendencias(f: dict, tipo_final: str | None, vsx: list[dict] | None,
     if vsx is None:
         itens.append(("atencao", "VSX online não conferido"))
     elif not vsx:
-        itens.append(("ok", "Nenhuma variável do VSX a 1'"))
+        itens.append(("ok", "Nenhuma variável do VSX a 2'"))
     else:
         for a in vsx:
             d = a["dist_arcsec"]
+            px = d / PIXEL_TESS_ARCSEC
             if d <= 30:
                 itens.append(("bloqueia", f"Já está no VSX: {a['nome']} a {d:.0f}\""))
+            elif _mesmo_periodo(a.get("periodo"), f.get("periodo_d")):
+                itens.append(("bloqueia", f"Variável do VSX a {d:.0f}\" com o mesmo período: "
+                                          f"{_rotulo_vsx(a)}; o sinal pode ser dela"))
             elif d <= 60:
-                itens.append(("atencao", f"Variável do VSX a {d:.0f}\" ({a['nome']}): "
+                itens.append(("atencao", f"Variável do VSX a {d:.0f}\" ({_rotulo_vsx(a)}): "
                                          "confira se não é a mesma estrela"))
+            else:
+                itens.append(("ok", f"Variável do VSX a {d:.0f}\" ({px:.1f} pixels do TESS) é "
+                                    f"outra estrela: {_rotulo_vsx(a)}, "
+                                    + ("período diferente" if a.get("periodo") else
+                                       "sem período no VSX")))
     return itens
 
 
@@ -178,7 +242,20 @@ def comentario(f: dict, tipo_final: str | None, vsx: list[dict] | None) -> str:
     if tipo_final:
         frases.append(f"Type: {tipo_final}.")
     if vsx == []:
-        frases.append("No known VSX variable within 1'.")
+        frases.append("No known VSX variable within 2'.")
+    elif vsx:
+        perto = min(vsx, key=lambda a: a["dist_arcsec"])
+        if perto["dist_arcsec"] > 30:
+            faixa = _faixa_mag(perto.get("max"), perto.get("min"))
+            desc = ", ".join(x for x in (perto.get("tipo"), f"P {perto['periodo']} d"
+                                         if perto.get("periodo") else "") if x)
+            frase = (f"The nearest VSX variable, {perto['nome']}"
+                     + (f" ({desc}{faixa})" if desc or faixa else "")
+                     + f", lies {perto['dist_arcsec']:.0f}\" away (about "
+                     f"{perto['dist_arcsec'] / PIXEL_TESS_ARCSEC:.0f} TESS pixels)")
+            if "pico no alvo" in str(f.get("blend_motivo") or ""):
+                frase += "; the pixel map peaks on the target"
+            frases.append(frase + ".")
     if str(f.get("vizier_variaveis") or "").lower().startswith("nenhum"):
         if MARCA_PODE_SUBMETER in str(f.get("avisos") or ""):
             frases.append("No entry within 30\" in the 25 main variable-star catalogs in VizieR "
