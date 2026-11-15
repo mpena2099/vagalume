@@ -3,6 +3,9 @@
 import re
 
 from config import MARCA_PODE_SUBMETER
+
+# abaixo disso o ASAS-SN e o ZTF nao veem a variacao (ruido de ~2 a 3%)
+AMP_SOLO_MIN_MAG = 0.05
 from src.vsx_api import URL_API, URL_DETALHE, _distancia_arcsec, consultar_vsx  # noqa: F401
 
 TIPOS_VSX = {
@@ -119,6 +122,9 @@ def comentario(f: dict, tipo_final: str | None, vsx: list[dict] | None) -> str:
     """Comentario ao moderador, em ingles, com os numeros da ficha."""
     frases = []
     setores = f.get("setores_usados") or f.get("setores")
+    if setores:
+        nums = [x.strip() for x in str(setores).split(",") if x.strip()]
+        setores = ", ".join(sorted(nums, key=lambda x: int(float(x)) if x.replace(".", "").isdigit() else 0))
     frases.append("Found in TESS QLP light curves" + (f" (sectors {setores})." if setores else "."))
     if "periodo_d" in f:
         p = f"Period measured from all sectors: {f['periodo_d']:.5f}"
@@ -133,17 +139,25 @@ def comentario(f: dict, tipo_final: str | None, vsx: list[dict] | None) -> str:
             frases.append(f"Odd/even eclipse depths differ ({fundos[0]:.2f}% vs {fundos[1]:.2f}%), "
                           "so the orbital period is 2x the BLS period.")
     if "epoca_bjd" in f:
-        frases.append(f"Epoch of minimum: BJD {f['epoca_bjd']:.4f}.")
+        frases.append(f"Epoch of minimum: BJD_TDB {f['epoca_bjd']:.4f} (TESS times are BJD_TDB; "
+                      "the difference from HJD is about a minute).")
     if "amplitude_mag_tess" in f:
         frases.append(f"Amplitude in the TESS band: {f['amplitude_mag_tess']:.3f} mag.")
+        if f["amplitude_mag_tess"] < AMP_SOLO_MIN_MAG:
+            frases.append("The variation is below the precision of ground-based surveys such as "
+                          "ASAS-SN and ZTF for this star, so only TESS data were used.")
     if tipo_final:
         frases.append(f"Type: {tipo_final}.")
     if vsx == []:
         frases.append("No known VSX variable within 1'.")
     if str(f.get("vizier_variaveis") or "").lower().startswith("nenhum"):
-        frases.append("No variable-star catalog in VizieR has an entry within 30\".")
+        if MARCA_PODE_SUBMETER in str(f.get("avisos") or ""):
+            frases.append("No entry within 30\" in the 25 main variable-star catalogs in VizieR "
+                          "(the full VizieR search was unavailable during the CDS outage).")
+        else:
+            frases.append("No variable-star catalog in VizieR has an entry within 30\".")
     if "gaia_dr3" in f:
         frases.append(f"Gaia DR3 {f['gaia_dr3']}.")
     if f.get("suspeito_blend") and f.get("blend_veredito") in (None, "ok"):
-        frases.append('A brighter Gaia neighbour lies within 42"; the pixel map peaks on the target.')
+        frases.append('A Gaia neighbour (less than 4 mag fainter) lies within 42"; the pixel map peaks on the target.')
     return " ".join(frases)

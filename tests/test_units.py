@@ -1054,7 +1054,7 @@ def test_comentario_vsx():
     assert "1.23456" in c and "TESS" in c and "—" not in c
     assert "No known VSX variable within 1'" in c and "Gaia DR3 123" in c
     assert "brighter Gaia neighbour" not in c
-    assert "brighter Gaia neighbour" in vsx.comentario(_ficha(suspeito_blend=True), "EA", [])
+    assert "Gaia neighbour (less than 4 mag fainter)" in vsx.comentario(_ficha(suspeito_blend=True), "EA", [])
     assert "No known VSX" not in vsx.comentario(_ficha(), "EA", None)
     assert "epoca" not in vsx.comentario({"tic": 1}, None, None).lower()
 

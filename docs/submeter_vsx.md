@@ -2,7 +2,7 @@
 
 O VSX (The International Variable Star Index) é o catálogo de estrelas variáveis da AAVSO. A submissão é feita à mão, pelo site [vsx.aavso.org](https://vsx.aavso.org): não há envio automático. Um moderador confere três coisas: a estrela está identificada certo, é variável e ainda não era conhecida. Conte com semanas até a resposta.
 
-Faça uma estrela por vez. A AAVSO recomenda que as primeiras submissões de quem está começando sejam individuais.
+Faça uma estrela por vez. Pelas regras do VSX, usuário novo só pode ter **uma submissão** até a primeira ser aprovada, e depois o limite é de 5 por semana. Submissão que fica 60 dias como rascunho, ou à espera de uma correção pedida pelo moderador, é apagada.
 
 ## 1. Antes de abrir o formulário
 
@@ -42,6 +42,7 @@ O login do VSX é separado da conta do site da AAVSO.
 1. Clique em **Log In** e entre.
 2. Clique em **Submit** no menu do topo.
 3. Escolha o **New Star Wizard**. Ele pede os campos um de cada vez e explica cada um. O **New Star Form** pede os mesmos dados numa página só; use-o quando já conhecer o caminho.
+4. Marque **Draft only** (no fim do formulário) até conferir tudo: o rascunho fica salvo e pode ser editado. Use também o link **Spot check** do campo de posição e o **Check name** do nome, que procuram duplicatas no próprio VSX.
 
 ## 4. Copiar os campos da ficha
 
@@ -53,13 +54,13 @@ Cada campo da página Fichas tem um botão de copiar, e o comentário em inglês
 | Coordenadas (RA, Dec) | "RA (Gaia DR3)" e "Dec (Gaia DR3)", em graus |
 | Tipo de variável | O tipo que você decidiu no passo 1 (EA, EB, EW, ROT...) |
 | Período | "Período (d)" |
-| Época | "Época do mínimo (BJD)" |
+| Época | "Época do mínimo (BJD)". O VSX fala em HJD, mas aceita o BJD_TDB do TESS (a diferença é de cerca de um minuto); o comentário avisa isso |
 | Magnitude máxima | "Magnitude V (máxima)", na banda V |
 | Magnitude mínima | "Amplitude (mag, TESS)": marque **"Minimum is an amplitude"** e escreva **TESS** no campo de banda |
-| Fonte dos dados | TESS, QLP, e os setores da ficha |
-| Anexos | A curva em fase `data/vsx/<tic>_fase.png` (obrigatória) e a figura da triagem `data/triagem/<tic>.png` |
+| Fonte dos dados | "TESS QLP (FFI)" e os setores da ficha. O guia do VSX recomenda o PDCSAP, que é do SPOC; para estrela observada só nas imagens completas (FFI), o QLP é o produto disponível |
+| Anexos | A curva em fase `data/vsx/<tic>_fase.png` (obrigatória) e a figura da triagem `data/triagem/<tic>.png`. Mande as duas: o VSX avisa que a abertura do TESS junta luz de vizinhas até ~120", e o mapa por pixel da triagem é a prova de que o sinal vem do alvo |
 
-No comentário, escreva em inglês e em poucas linhas como achou a estrela: curvas do TESS (QLP), período medido com todos os setores, sem variável conhecida a 30" e, se for o caso, a vizinha e por que ela não explica o sinal.
+O comentário em inglês gerado pela página diz como a estrela foi achada (TESS QLP e setores), o período medido com todos os setores (e por que é 2P, quando os eclipses pares e ímpares diferem), a época em BJD_TDB, a amplitude, que a variação fica abaixo da precisão do ASAS-SN e do ZTF quando é o caso (o VSX incentiva combinar com levantamentos de solo), o que as buscas no VSX e no VizieR acharam e, se houver, a vizinha e o que o mapa por pixel mostra.
 
 ## 5. Depois de enviar
 
