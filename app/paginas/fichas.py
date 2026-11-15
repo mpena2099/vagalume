@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from app import dados, estilo, paineis, vsx
-from config import DEMO, MARCA_PODE_SUBMETER, SQLITE_PATH, VSX_DIR
+from config import DEMO, DESCOBRIDOR, MARCA_PODE_SUBMETER, SQLITE_PATH, VSX_DIR
 
 DESCRICAO = "Confira cada estrela confirmada, copie os campos no VSX e marque o envio."
 FILTROS = ["A enviar", "Todas", "Enviadas", "Aceitas"]
@@ -65,57 +65,12 @@ def proxima_a_enviar(atual: int, enviadas: set[int]) -> int | None:
     return next((t for t in depois if t not in enviadas), None)
 
 
-def _fmt(valor, formato: str) -> str:
-    return "?" if valor is None else format(valor, formato)
-
-
 @st.cache_data(show_spinner=False, persist="disk")
 def ids_tic(tic: int) -> list[str]:
     """Outros nomes da estrela pelo catalogo TIC do MAST (cache em disco: nao mudam)."""
     from astroquery.mast import Catalogs
     t = Catalogs.query_criteria(catalog="TIC", ID=int(tic))
     return vsx.nomes_catalogo({k: t[k][0] for k in t.colnames}) if len(t) else []
-
-
-def campos(f: dict, tipo_final: str | None = None,
-           outros: list[str] | None = None) -> list[tuple[str, str, str]]:
-    """(rotulo, valor para copiar, ajuda) dos campos do formulario do VSX."""
-    itens = [("Nome principal", f"TIC {f['tic']}", "depois clique em Check name")]
-    if not outros:
-        outros = [f"Gaia DR3 {f['gaia_dr3']}"] if "gaia_dr3" in f else []
-    itens.append(("Outros nomes", "\n".join(outros), "um por linha, como o VSX pede"))
-    if tipo_final:
-        itens.append(("Tipo", tipo_final, f.get("motivo_tipo", "")))
-    elif "tipo_sugerido" in f:
-        itens.append(("Tipo (sugestão)", f["tipo_sugerido"], f.get("motivo_tipo", "")))
-    if "periodo_d" in f:
-        periodo = _fmt(f["periodo_d"], ".5f")
-        if "periodo_erro_d" in f:
-            periodo += f" +- {_fmt(f['periodo_erro_d'], '.6f')}"
-        itens.append(("Período (d)", periodo, ""))
-    if "fase_secundario" in f:
-        itens.append(("Mínimo secundário (fase)", _fmt(f["fase_secundario"], ".3f"), ""))
-    if "epoca_bjd" in f:
-        itens.append(("Época do mínimo (BJD)", _fmt(f["epoca_bjd"], ".4f"), ""))
-    if "gaia_ra" in f and "gaia_dec" in f:
-        graus, sexagesimal = vsx.coordenadas_j2000(f["gaia_ra"], f["gaia_dec"])
-        itens.append(("Coordenadas J2000 (colar no VSX)", graus,
-                      "cole no campo de coordenadas e confira no Spot Check"))
-        itens.append(("Coordenadas J2000 (sexagesimal)", sexagesimal, ""))
-    if "gaia_ra" in f:
-        itens.append(("RA (Gaia DR3, graus)", _fmt(f["gaia_ra"], ".6f"), ""))
-    if "gaia_dec" in f:
-        itens.append(("Dec (Gaia DR3, graus)", _fmt(f["gaia_dec"], "+.6f"), ""))
-    if "v_estimada" in f:
-        itens.append(("Magnitude V (máxima)", _fmt(f["v_estimada"], ".2f"),
-                      f"estimada do Gaia G {_fmt(f.get('gaia_g'), '.2f')} e BP-RP"))
-    if "amplitude_mag_tess" in f:
-        itens.append(("Amplitude (mag, TESS)", _fmt(f["amplitude_mag_tess"], ".3f"),
-                      'marcar "Minimum is an amplitude", banda TESS'))
-    setores = f.get("setores_usados") or f.get("setores")
-    if setores:
-        itens.append(("Setores TESS", setores, "TESS QLP"))
-    return itens
 
 
 if DEMO:
@@ -472,44 +427,49 @@ with aba_conferir:
 
 with aba_enviar:
     tipo_atual = st.session_state.get(f"tipo_{tic}")
-    st.markdown("**Campos do New Star Wizard**")
-    colunas = st.columns(2)
     try:
         with st.spinner("Buscando os outros nomes da estrela no TIC..."):
             outros = ids_tic(tic)
     except Exception:
         outros = None
         st.caption("O MAST não respondeu: os outros nomes ficaram só com o Gaia DR3.")
-    for i, (rotulo, valor, ajuda) in enumerate(campos(f, tipo_atual, outros)):
-        with colunas[i % 2]:
-            st.markdown(f"**{rotulo}**")
-            st.code(valor)
-            if ajuda:
-                st.caption(ajuda)
-    st.markdown("**Comentário para o moderador (em inglês)**")
-    st.code(vsx.comentario(f, tipo_atual, achados), language=None, wrap_lines=True)
-    st.markdown("**Anexos**")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        anexo("Baixar curva em fase", figura, f"TIC{tic}_fase.png", f"dl_fase_{tic}")
-    with c2:
-        anexo("Baixar figura da triagem", triagem or Path("triagem"), f"TIC{tic}_triagem.png",
-              f"dl_tri_{tic}")
-    with c3:
-        carta = VSX_DIR / f"{tic}_carta.png"
-        if carta.exists():
-            anexo("Baixar carta de identificação", carta, f"TIC{tic}_carta.png", f"dl_carta_{tic}")
-        elif "gaia_ra" in f and "gaia_dec" in f \
-                and st.button("Gerar carta de identificação", key=f"carta_{tic}"):
-            from src.carta import gerar_carta
-            with st.spinner("Baixando a imagem do DSS..."):
-                ok = gerar_carta(tic, f["gaia_ra"], f["gaia_dec"],
-                                 [(a["ra"], a["dec"]) for a in achados or [] if "ra" in a],
-                                 carta)
-            if ok:
-                st.rerun()
-            else:
-                st.error("Não foi possível baixar a imagem do DSS. Tente de novo.")
+    telas = vsx.telas_wizard(f, tipo_atual, outros, achados,
+                             confirmado=tipo_atual == tipo_salvo(tic), descobridor=DESCOBRIDOR)
+    for n, tela in enumerate(telas, 1):
+        with st.container(border=True):
+            st.markdown(f"**{n}. {tela['tela']}**")
+            for rotulo, valor, copiar, ajuda in tela["campos"]:
+                if copiar:
+                    st.markdown(f"**{rotulo}**")
+                    st.code(valor, language=None, wrap_lines=True)
+                else:
+                    st.markdown(f"**{rotulo}:** {valor}")
+                if ajuda:
+                    st.caption(ajuda)
+            if tela["tela"].startswith("Are there any supporting files"):
+                st.markdown("**Anexos**")
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    anexo("Baixar curva em fase", figura, f"TIC{tic}_fase.png", f"dl_fase_{tic}")
+                with c2:
+                    anexo("Baixar figura da triagem", triagem or Path("triagem"),
+                          f"TIC{tic}_triagem.png", f"dl_tri_{tic}")
+                with c3:
+                    carta = VSX_DIR / f"{tic}_carta.png"
+                    if carta.exists():
+                        anexo("Baixar carta de identificação", carta, f"TIC{tic}_carta.png",
+                              f"dl_carta_{tic}")
+                    elif "gaia_ra" in f and "gaia_dec" in f \
+                            and st.button("Gerar carta de identificação", key=f"carta_{tic}"):
+                        from src.carta import gerar_carta
+                        with st.spinner("Baixando a imagem do DSS..."):
+                            ok = gerar_carta(tic, f["gaia_ra"], f["gaia_dec"],
+                                             [(a["ra"], a["dec"]) for a in achados or [] if "ra" in a],
+                                             carta)
+                        if ok:
+                            st.rerun()
+                        else:
+                            st.error("Não foi possível baixar a imagem do DSS. Tente de novo.")
     st.divider()
     st.session_state.setdefault(f"env_{tic}", bool(pd.notna(e.get("enviada_em")) and e.get("enviada_em")))
     st.session_state.setdefault(f"ace_{tic}", bool(pd.notna(e.get("aceita_em")) and e.get("aceita_em")))

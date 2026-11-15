@@ -87,11 +87,11 @@ O login do VSX é separado da conta do site da AAVSO.
 2. Clique em **Submit** no menu do topo.
 3. Na pergunta "Do you want to submit a new variable star based on your observations only?", responda **não** e não marque **Novice discovery**: essa opção é para quem achou a estrela na própria fotometria, e a do Vagalume vem da análise de dados de levantamento (TESS) em vários setores.
 4. Escolha o **New Star Wizard**. Ele pede os campos um de cada vez e explica cada um. O **New Star Form** pede os mesmos dados numa página só; use-o quando já conhecer o caminho.
-5. Marque **Draft only** (no fim do formulário) até conferir tudo: o rascunho fica salvo e pode ser editado. Use também o link **Spot check** do campo de posição e o **Check name** do nome, que procuram duplicatas no próprio VSX.
+5. O Wizard não tem rascunho: a última tela (Review) mostra tudo, com um **Change** em cada item, e o **Submit** envia de vez. Use o link **Spot Check** do campo de posição e o **Check name** do nome, que procuram duplicatas no próprio VSX. Os arquivos não podem ser trocados depois do upload.
 
 ## 4. Copiar os campos da ficha
 
-Cada campo da página Fichas tem um botão de copiar, e o comentário em inglês já vem pronto com os números da ficha (confira antes de colar). Os anexos têm botão de baixar na própria página. Os nomes no formulário podem variar um pouco; a correspondência é esta:
+Cada tela do Wizard tem a sua caixa na aba Enviar, na ordem do site, com o valor pronto para copiar, o que marcar e o que deixar vazio (Incertains, menus, títulos e descrições dos dois anexos e o descobridor). O texto das Remarks já vem pronto em inglês com os números da ficha (confira antes de colar). As Remarks são o único campo de texto do Wizard e são públicas: aparecem na ficha da estrela, para o moderador e para quem usar os dados e os anexos têm botão de baixar na própria tela dos arquivos. A tabela abaixo serve de referência; os nomes no formulário podem variar um pouco:
 
 | No formulário do VSX | Da ficha |
 |---|---|
@@ -100,13 +100,15 @@ Cada campo da página Fichas tem um botão de copiar, e o comentário em inglês
 | Tipo de variável | O tipo que você decidiu no passo 1 (EA, EB, EW, ROT...; veja [Os tipos de variável](#os-tipos-de-variavel)) no menu **Standardized type**; deixe **Customized type** vazio. Marque **Uncertain** só se a página não confirmou o tipo (sem tipo provável, ou escolhido por você na dúvida); entre dois tipos possíveis, escreva no Customized type com `|` (ex.: `ROT|EW`) |
 | Tipo espectral | Deixe vazio: o tipo espectral vem de um espectro, e a Teff do Gaia é estimada pela fotometria, não é tipo espectral medido. Preencha só se houver espectro publicado (SIMBAD, LAMOST) |
 | Período | "Período (d)" |
-| Época | "Época do mínimo (BJD)". O VSX fala em HJD, mas aceita o BJD_TDB do TESS (a diferença é de cerca de um minuto); o comentário avisa isso |
+| Época | "Época do mínimo (HJD, colar no VSX)": a página converte do BJD_TDB do TESS para HJD (a diferença é de cerca de um minuto) |
+| Discoverer | O nome do crédito de descoberta, `DESCOBRIDOR` em `config.py` (variável `VAGALUME_DESCOBRIDOR`), igual ao cadastro do VSX, sem acentos |
+| Rise/eclipse duration | "Duração do eclipse (% do período)". Marque **Uncertain** em eclipse raso (amplitude abaixo de 0,05 mag), quando as bordas ficam no ruído |
 | Magnitude máxima | "Magnitude V (máxima)", na banda V |
 | Magnitude mínima | "Amplitude (mag, TESS)": marque **"Minimum is an amplitude"** e escolha **TESS** no menu de banda (se não houver, escreva `TESS` em **Custom min. passband**). Deixe os limitadores e o Uncertain em branco |
 | Fonte dos dados | "TESS QLP (FFI)" e os setores da ficha. O guia do VSX recomenda o PDCSAP, que é do SPOC; para estrela observada só nas imagens completas (FFI), o QLP é o produto disponível |
 | Anexos | A curva em fase `data/vsx/<tic>_fase.png` (obrigatória) e a figura da triagem `data/triagem/<tic>.png`. Mande as duas: o VSX avisa que a abertura do TESS junta luz de vizinhas até ~120", e o mapa por pixel da triagem é a prova de que o sinal vem do alvo. Em campo lotado, como no plano da Galáxia, mande também a carta de identificação `data/vsx/<tic>_carta.png` (DSS2 Red, 5'x5', alvo e vizinhas marcados), gerada pelo botão "Gerar carta de identificação" na aba Enviar |
 
-O comentário em inglês gerado pela página diz como a estrela foi achada (TESS QLP e setores), o período medido com todos os setores (e por que é 2P, quando os eclipses pares e ímpares diferem), a época em BJD_TDB, a amplitude, que a variação fica abaixo da precisão do ASAS-SN e do ZTF quando é o caso (o VSX incentiva combinar com levantamentos de solo), o que as buscas no VSX e no VizieR acharam e, se houver, a vizinha e o que o mapa por pixel mostra.
+O texto das Remarks gerado pela página diz como a estrela foi achada (o pipeline Vagalume, com link, no TESS QLP e nos setores), o período medido com todos os setores (e por que é 2P, quando os eclipses pares e ímpares diferem), a época em HJD (convertida do BJD_TDB) e a duração do eclipse, a amplitude, que a variação fica abaixo da precisão do ASAS-SN e do ZTF quando é o caso (o VSX incentiva combinar com levantamentos de solo), o que as buscas no VSX e no VizieR acharam e, se houver, a vizinha e o que o mapa por pixel mostra.
 
 ### Como ler o Spot Check e o Check name
 

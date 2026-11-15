@@ -44,7 +44,7 @@ from config import (BLEND_AMP_MAX, BLS_FLATTEN_D, CATALOGOS_VARIAVEIS_ESPELHO, L
 from src.curvas import baixar_curva
 from src.detectar_sinal import _arrays, _flatten
 from src.checar_contaminacao import amp_necessaria
-from src.periodo_setores import (medir_periodo_setores, oc_setores,
+from src.periodo_setores import (duracao_eclipse, medir_periodo_setores, oc_setores,
                                  par_impar_setores)
 from src import util
 from src.util import retry
@@ -392,6 +392,7 @@ def _medir(s) -> dict:
             "figura_triagem": s.figura}
     _buscar_oc(ficha, s, brutas)
     _buscar_parimpar(ficha, s, brutas)
+    _buscar_duracao(ficha, s, brutas)
     return ficha
 
 
@@ -475,6 +476,22 @@ def _buscar_parimpar(ficha: dict, s, brutas=None) -> None:
         + ("eclipses estreitos e brilho plano entre eles" if plano
            else "brilho varia o tempo todo entre os eclipses"))
     _oc_e_figura(ficha, s, curvas, rotulos, True)
+
+
+def _buscar_duracao(ficha: dict, s, brutas=None) -> None:
+    """Duracao total do eclipse em % do periodo, na curva juntada e com o periodo e a epoca
+    finais da ficha (so curvas em cache). Fora de eclipse, so grava que nao se aplica."""
+    eclipse = s.metodo == "bls" or ficha["tipo_sugerido"] in ("EA", "EB")
+    if not eclipse:
+        ficha["duracao_eclipse_pct"] = "não se aplica: não é eclipse"
+        return
+    print("  medindo a duração do eclipse", flush=True)
+    brutas = brutas or _carregar_setores(s)
+    curvas = [_arrays(_flatten(lc, BLS_FLATTEN_D)) for _, lc in brutas]
+    tempo, fluxo = _juntar(curvas)
+    d = duracao_eclipse(tempo, fluxo, ficha["periodo_d"], ficha["epoca_bjd"] - BTJD_PARA_BJD)
+    ficha["duracao_eclipse_pct"] = round(100 * d, 1) if np.isfinite(d) else "não se mediu"
+    print(f"  duração do eclipse: {ficha['duracao_eclipse_pct']}", flush=True)
 
 
 def _buscar_gaia(ficha: dict, s) -> str | None:
@@ -621,10 +638,12 @@ def _buscar_tipo(ficha: dict, s) -> None:
 
 
 BUSCAS = {"gaia": _buscar_gaia, "vizier": _buscar_vizier, "oc": _buscar_oc,
-          "parimpar": _buscar_parimpar, "blend": _buscar_blend, "params": _buscar_params, "tipo": _buscar_tipo}
-ORDEM = ("gaia", "vizier", "oc", "parimpar", "blend", "params", "tipo")
+          "parimpar": _buscar_parimpar, "duracao": _buscar_duracao, "blend": _buscar_blend,
+          "params": _buscar_params, "tipo": _buscar_tipo}
+ORDEM = ("gaia", "vizier", "oc", "parimpar", "duracao", "blend", "params", "tipo")
 NOMES_BUSCA = {"gaia": "fonte Gaia DR3", "vizier": "busca no VizieR", "oc": "O-C dos setores",
-               "parimpar": "eclipses pares x ímpares", "blend": "blend", "params": "Teff do Gaia DR3", "tipo": "tipo provável"}
+               "parimpar": "eclipses pares x ímpares", "duracao": "duração do eclipse",
+               "blend": "blend", "params": "Teff do Gaia DR3", "tipo": "tipo provável"}
 
 
 def tipo_aviso(aviso: str) -> str | None:
@@ -667,6 +686,8 @@ def pendente(anterior: dict, busca: str) -> bool:
         return "oc_fases" not in anterior
     if busca == "parimpar":
         return "par_impar_prof" not in anterior
+    if busca == "duracao":
+        return "duracao_eclipse_pct" not in anterior
     if busca == "blend":
         return ("blend_veredito" not in anterior
                 or str(anterior.get("blend_motivo", "")).startswith(BLEND_SEM_CONSULTA))
@@ -685,7 +706,8 @@ def plano(anterior: dict | None, refazer: bool = False) -> str:
         if tipo is None:
             return "nova"  # aviso que esta logica nao sabe completar
         faltas.add(tipo)
-    faltas |= {k for k in ("oc", "parimpar", "blend", "params") if pendente(anterior, k)}
+    faltas |= {k for k in ("oc", "parimpar", "duracao", "blend", "params")
+               if pendente(anterior, k)}
     if "gaia" in faltas and "gaia_params_fonte" not in anterior:
         faltas.add("params")  # a fonte Gaia vem agora; o Teff e dela
     # o tipo provavel depende do periodo (oc, parimpar) e do Teff (params)
@@ -698,7 +720,7 @@ def plano(anterior: dict | None, refazer: bool = False) -> str:
 
 NUMERICAS = ["periodo_d", "periodo_erro_d", "fase_secundario", "epoca_bjd", "amplitude_mag_tess",
              "gaia_ra", "gaia_dec", "gaia_g", "v_estimada", "gaia_sep_arcsec", "oc_max_fase",
-             "gaia_teff", "gaia_logg", "gaia_raio", "par_impar_sigma"]
+             "gaia_teff", "gaia_logg", "gaia_raio", "par_impar_sigma", "duracao_eclipse_pct"]
 
 
 def ler_fichas(caminho: Path) -> dict[int, dict]:
@@ -717,7 +739,11 @@ def ler_fichas(caminho: Path) -> dict[int, dict]:
             f["tic"] = int(f["tic"])
             for k in NUMERICAS:
                 if k in f:
-                    f[k] = float(f[k])
+                    try:
+                        f[k] = float(f[k])
+                    except ValueError:
+                        if k != "duracao_eclipse_pct":
+                            raise  # texto so vale para a duracao do eclipse
             if "gaia_dr3" in f:
                 f["gaia_dr3"] = int(float(f["gaia_dr3"])) if "e" in f["gaia_dr3"].lower() \
                     else int(f["gaia_dr3"])

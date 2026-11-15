@@ -102,7 +102,7 @@ def test_vizier_so_lista():
 
 
 NOVAS_FICHA = {"oc_fases": "55 +0.000, 56 +0.001", "blend_veredito": "ok", "blend_motivo": "m",
-               "gaia_params_fonte": "sem", "motivo_provavel": "m",
+               "gaia_params_fonte": "sem", "motivo_provavel": "m", "duracao_eclipse_pct": 2.5,
                "par_impar_prof": "par 1.00% / ímpar 1.00%"}
 
 
@@ -126,13 +126,17 @@ def test_ficha_vsx_retoma():
     sem_params = {k: v for k, v in NOVAS_FICHA.items() if k != "gaia_params_fonte"}
     assert fv.plano({**sem_params, "avisos": fv.AVISO_GAIA}) == "completar:gaia,params,tipo"
     assert fv.plano({**sem_params, "avisos": "", "gaia_dr3": 1}) == "completar:params,tipo"
-    assert fv.plano({"avisos": "", "gaia_dr3": 1}) == "completar:oc,parimpar,blend,params,tipo"
+    assert fv.plano({"avisos": "", "gaia_dr3": 1, "duracao_eclipse_pct": 2.5}
+                    ) == "completar:oc,parimpar,blend,params,tipo"
     assert fv.plano({**NOVAS_FICHA, "blend_motivo": fv.BLEND_SEM_CONSULTA + ": x"}
                     ) == "completar:blend"
     assert fv.plano({**NOVAS_FICHA, "avisos": "aviso desconhecido"}) == "nova"
     antiga = {k: v for k, v in NOVAS_FICHA.items() if k != "par_impar_prof"}
     assert fv.plano({**antiga, "avisos": ""}) == "completar:parimpar,tipo"
     assert fv.plano({**antiga, "avisos": fv.AVISO_VIZIER}) == "completar:vizier,parimpar,tipo"
+    # ficha anterior sem a duracao do eclipse: so essa coluna e completada
+    sem_duracao = {k: v for k, v in NOVAS_FICHA.items() if k != "duracao_eclipse_pct"}
+    assert fv.plano({**sem_duracao, "avisos": ""}) == "completar:duracao"
 
     # o CSV volta igual, inclusive o ID Gaia de 19 digitos e as colunas vazias
     tmp_path = Path(tempfile.mkdtemp())
@@ -808,7 +812,8 @@ def test_vsx_online_fase5():
 def _ficha(**extra):
     f = {"tic": 1, "avisos": "", "periodo_d": 1.23456, "periodo_erro_d": 0.00002,
          "epoca_bjd": 2459000.1234, "amplitude_mag_tess": 0.25, "setores_usados": "55, 56",
-         "tipo_sugerido": "EA", "gaia_dr3": 123, "vizier_variaveis": "nenhum", "suspeito_blend": False}
+         "tipo_sugerido": "EA", "gaia_dr3": 123, "gaia_ra": 309.59941949996,
+         "gaia_dec": 41.05187172336, "vizier_variaveis": "nenhum", "suspeito_blend": False}
     f.update(extra)
     return f
 
@@ -1035,6 +1040,18 @@ def test_par_impar():
     assert not r["consistente"] and not r["dobrar"]
 
 
+def test_duracao_eclipse():
+    from src.periodo_setores import duracao_eclipse
+    rng = np.random.default_rng(0)
+    t = np.arange(0, 30, 4 / 1440)
+    fase = (t / 2.5) % 1
+    caixa = 1 - 0.01 * (fase < 0.03) + rng.normal(0, 0.0002, t.size)
+    d = duracao_eclipse(t, caixa, 2.5, 0.0)
+    assert 0.025 < d < 0.04, d
+    plano = np.ones_like(t)
+    assert np.isnan(duracao_eclipse(t, plano, 2.5, 0.0))
+
+
 def test_par_impar_ficha_e_comentario():
     from app import vsx
     from src import ficha_vsx as fv
@@ -1058,7 +1075,16 @@ def test_comentario_vsx():
     from app import vsx
     c = vsx.comentario(_ficha(), "EA", [])
     assert "1.23456" in c and "TESS" in c and "—" not in c
-    assert "No known VSX variable within 2'" in c and "Gaia DR3 123" in c
+    assert "Epoch of minimum: HJD 2459000.1226 (converted from TESS BJD_TDB 2459000.1234)." in c
+    assert "BJD_TDB 2459000.1234 (TESS times are BJD_TDB" not in c
+    assert "Eclipse duration: 2.5% of the period." in vsx.comentario(
+        _ficha(duracao_eclipse_pct=2.5), "EA", [])
+    assert "Eclipse duration" not in vsx.comentario(
+        _ficha(duracao_eclipse_pct="não se aplica"), "EA", [])
+    sem_coord = {k: v for k, v in _ficha().items() if k not in ("gaia_ra", "gaia_dec")}
+    assert "BJD_TDB 2459000.1234" in vsx.comentario(sem_coord, "EA", [])
+    assert "No known VSX variable within 2'" in c and "identifiers from Gaia DR3" in c
+    assert c.startswith("Found with the Vagalume search pipeline") and "Type:" not in c
     assert "brighter Gaia neighbour" not in c
     assert "Gaia neighbour (less than 4 mag fainter)" in vsx.comentario(_ficha(suspeito_blend=True), "EA", [])
     assert "No known VSX" not in vsx.comentario(_ficha(), "EA", None)
@@ -1113,6 +1139,15 @@ def test_limite_envio():
                             hoje) is None
 
 
+def test_hjd_de_bjd():
+    from app.vsx import hjd_de_bjd
+    bjd = 2459696.0136660584
+    hjd = hjd_de_bjd(bjd, 309.59941949996, 41.05187172336)
+    assert abs(hjd - 2459696.01289) < 1e-4, hjd
+    minutos = abs(bjd - hjd) * 1440
+    assert 0.5 < minutos < 1.5, minutos
+
+
 def test_coordenadas_j2000():
     from app.vsx import coordenadas_j2000
     assert coordenadas_j2000(309.59941949996, 41.05187172336) == (
@@ -1152,6 +1187,71 @@ def test_nomes_catalogo():
                                          "2MASS J20382386+4103066", "UCAC4 656-090678",
                                          "WISEA J203823.88+410306.3"]
     assert vsx.nomes_catalogo({}) == []
+
+
+def _ficha_tic64710105(**extra):
+    f = {"tic": 64710105, "periodo_d": 3.98776029, "epoca_bjd": 2459696.0136660584,
+         "gaia_ra": 309.59941949996, "gaia_dec": 41.05187172336, "v_estimada": 12.495,
+         "amplitude_mag_tess": 0.013, "duracao_eclipse_pct": 3.2,
+         "setores_usados": "55,56,41", "par_impar_dobrado": True,
+         "par_impar_prof": "par 0.87% / ímpar 1.04%", "tipo_sugerido": "EA",
+         "figura_triagem": "data/triagem/64710105.png",
+         "blend_motivo": 'pico no alvo (0.7 px); vizinha a 27"',
+         "gaia_dr3": 2064816282152023680}
+    f.update(extra)
+    return f
+
+
+def campos_tela(telas, n):
+    return {r: (v, c) for r, v, c, _ in telas[n]["campos"]}
+
+
+def test_telas_wizard():
+    from app import vsx
+    telas = vsx.telas_wizard(_ficha_tic64710105(), "EA", None, [], confirmado=True,
+                             descobridor="Mauricio O. Pena")
+    assert [t["tela"] for t in telas] == [
+        "Submission method",
+        "Do you want to submit a new variable star based on your observations only?",
+        "What is the position of this new variable object?",
+        "What names is this new variable object known by?",
+        "What is the variability type for this variable object?",
+        "What is the spectral type for this variable object?",
+        "What is the magnitude range for variability of this object?",
+        "What is the period of variability for this object?",
+        "Are there any supporting files to accompany this submission?",
+        "Who was the original discoverer of this variable object?",
+        "Is there a reference to literature for this object?",
+        "Are there any remarks to be added to this submission?",
+        "Is all the information provided correct?",
+    ]
+    assert campos_tela(telas, 11)["Remarks"][0].startswith("Found with the Vagalume")
+
+    def campos(n):
+        return {r: (v, c) for r, v, c, _ in telas[n]["campos"]}
+    assert campos(7)["Epoch (HJD)"][0] == "2459696.0129"
+    assert campos(7)["Rise/eclipse duration Uncertain"][0] == "marcado"
+    assert campos(4)["Uncertain"][0] == "desmarcado"
+    descricoes = [v for _, v, c, _ in telas[8]["campos"] if c and v.startswith("TESS QLP")]
+    assert "sectors 41, 55, 56" in descricoes[0] and "1.04% and 0.87%" in descricoes[0]
+    pixel = [v for _, v, _, _ in telas[8]["campos"] if v.startswith("Detection figure")]
+    assert "0.7 px" in pixel[0]
+    assert campos(9)["Discoverer"][0] == "Mauricio O. Pena"
+    amb = _ficha_tic64710105(tipo_sugerido="ROT, EW ou pulsante", tipo_provavel="EW")
+    marcado = vsx.telas_wizard(amb, "EW", None, [], confirmado=False, descobridor="X")
+    assert dict((r, v) for r, v, *_ in marcado[4]["campos"])["Uncertain"] == "marcado"
+    confirmado = vsx.telas_wizard(amb, "EW", None, [], confirmado=True, descobridor="X")
+    assert dict((r, v) for r, v, *_ in confirmado[4]["campos"])["Uncertain"] == "desmarcado"
+
+
+def test_telas_wizard_sem_valores():
+    from app import vsx
+    f = {k: v for k, v in _ficha_tic64710105().items()
+         if k not in ("v_estimada", "duracao_eclipse_pct")}
+    telas = vsx.telas_wizard(f, "EA", None, [], confirmado=True, descobridor="X")
+    assert len(telas) == 13
+    assert "Maximum magnitude" not in [r for r, *_ in telas[6]["campos"]]
+    assert dict((r, v) for r, v, *_ in telas[7]["campos"])["Rise/eclipse duration (%)"] == "vazio"
 
 
 if __name__ == "__main__":

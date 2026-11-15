@@ -123,6 +123,9 @@ TREINO_DIR = ROOT / ("demo" if DEMO else "data") / "treino"
 # Fase 8: fichas de submissao ao VSX (src/ficha_vsx.py, manual)
 VSX_DIR = ROOT / "data" / "vsx"
 
+# credito de descoberta no VSX, sem acento, igual ao cadastro
+DESCOBRIDOR = os.environ.get("VAGALUME_DESCOBRIDOR", "Mauricio O. Pena")
+
 # LLM com visao (tools/teste_llm_visao.py): formato OpenAI-compatible, como no Rastro.
 # Chave da env var abaixo, senao do auth.json do OpenCode (campo <provedor>.key).
 # Groq tirou o modelo com visao (llama-4-scout) do plano gratis; o Gemini tem.

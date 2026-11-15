@@ -283,6 +283,36 @@ def largura_eclipse(tempo, fluxo, periodo: float, epoca: float,
     return float(max(dir_ - esq + 1, 1) / n_bins)
 
 
+def duracao_eclipse(tempo, fluxo, periodo: float, epoca: float,
+                    n_bins: int = PAR_IMPAR_BINS, fracao: float = 0.1) -> float:
+    """Largura total do eclipse (em fase) onde a profundidade suavizada em 3 bins fica a
+    >= fracao do pico perto da fase 0. NaN se nao houver pico positivo."""
+    fluxo = np.asarray(fluxo, dtype=float)
+    cadencia = float(np.median(np.diff(np.sort(tempo)))) if len(tempo) > 1 else periodo
+    n_bins = int(max(20, min(n_bins, periodo / (2 * cadencia))))
+    fase = _fase_centrada(tempo, periodo, epoca)
+    idx = np.minimum(((fase + 0.5) * n_bins).astype(int), n_bins - 1)
+    med = np.full(n_bins, np.nan)
+    for k in np.unique(idx):
+        med[k] = np.median(fluxo[idx == k])
+    prof = np.nanmedian(med) - med
+    centro = n_bins // 2
+    janela = np.arange(centro - n_bins // 40, centro + n_bins // 40 + 1)
+    suave = np.convolve(np.nan_to_num(prof), np.ones(3) / 3, mode="same")
+    k0 = janela[int(np.argmax(suave[janela]))]
+    pico = suave[k0]
+    if not np.isfinite(pico) or pico <= 0:
+        return np.nan
+    limite = fracao * pico
+    esq = k0
+    while esq > 0 and suave[esq - 1] >= limite:
+        esq -= 1
+    dir_ = k0
+    while dir_ < n_bins - 1 and suave[dir_ + 1] >= limite:
+        dir_ += 1
+    return float(max(dir_ - esq + 1, 1) / n_bins)
+
+
 def _mediana_erro(x) -> tuple[float, float]:
     return float(np.median(x)), float(1.25 * 1.4826 * np.median(np.abs(x - np.median(x)))
                                       / np.sqrt(len(x)))
