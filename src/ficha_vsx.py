@@ -220,12 +220,13 @@ def tipo_provavel(periodo_d: float, teff: float | None, minimos_iguais: bool,
         return None, f"sem sugestão: logg {logg:.1f} (gigante), as regras são para anãs"
     p, dp = periodo_d, 2 * periodo_d
     regras = []
-    if p < 0.25 and teff > 6500:
-        regras.append(("DSCT", f"P {p:.3f} d < 0,25 d e Teff {teff:.0f} K > 6500 K"))
-    if teff > 10000 and 0.3 <= p <= 3:
-        regras.append(("SPB", f"Teff {teff:.0f} K > 10000 K e P {p:.2f} d entre 0,3 e 3 d"))
-    if 6800 <= teff <= 7800 and 0.3 <= p <= 3:
-        regras.append(("GDOR", f"Teff {teff:.0f} K entre 6800 e 7800 K e P {p:.2f} d entre 0,3 e 3 d"))
+    # faixas de periodo e tipo espectral da definicao de cada tipo no VSX (about.vartypes)
+    if 0.01 <= p <= 0.2 and teff > 6500:
+        regras.append(("DSCT", f"P {p:.3f} d entre 0,01 e 0,2 d e Teff {teff:.0f} K > 6500 K"))
+    if teff > 10000 and 0.4 <= p <= 5:
+        regras.append(("SPB", f"Teff {teff:.0f} K > 10000 K e P {p:.2f} d entre 0,4 e 5 d"))
+    if 6300 <= teff <= 7800 and 0.25 <= p <= 4:
+        regras.append(("GDOR", f"Teff {teff:.0f} K entre 6300 e 7800 K e P {p:.2f} d entre 0,25 e 4 d"))
     if teff < 6000 and onda_unica and p > 0.5:
         regras.append(("ROT", f"Teff {teff:.0f} K < 6000 K, onda única e P {p:.2f} d > 0,5 d"))
     if minimos_iguais and 0.2 <= dp <= 1 and 4000 <= teff <= 7000:

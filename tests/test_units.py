@@ -938,6 +938,12 @@ def test_tipo_provavel():
     # sem Teff ou gigante: sem sugestao
     assert tp(0.1, None, True, True)[0] is None and "Teff" in tp(0.1, None, True, True)[1]
     assert tp(1.2, 5000, False, True, logg=2.0)[0] is None
+    # limites das faixas do VSX
+    assert tp(0.25, 7500, False, True)[0] == "GDOR"  # acima de 0,2 d nao e DSCT
+    assert tp(0.35, 12000, False, True)[0] is None  # SPB comeca em 0,4 d
+    assert tp(4.5, 12000, False, True)[0] == "SPB"
+    assert tp(3.5, 6400, False, True)[0] == "GDOR"
+    assert tp(4.5, 7000, False, True)[0] is None
 
 
 def test_razao_harmonicos():
