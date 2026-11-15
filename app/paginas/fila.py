@@ -66,13 +66,15 @@ except Exception as e:
              "Rode `python pipeline.py` (ou as fases 2 a 7) antes de abrir o app.")
     st.stop()
 
-with st.sidebar.expander("Pipeline", expanded=execucao.rodando()):
-    paineis.painel_busca(int((todos["decisao"] == "pendente").sum()) if not todos.empty else 0)
+_pendentes = int((todos["decisao"] == "pendente").sum()) if not todos.empty else 0
+with st.sidebar.expander("Buscar novas candidatas", icon=":material/travel_explore:",
+                         expanded=execucao.rodando() or _pendentes == 0):
+    paineis.painel_busca(_pendentes)
 
 if todos.empty:
     estilo.cabecalho("Revisão", descricao=DESCRICAO)
     st.warning("A tabela candidatos_fase7 está vazia. Use \"Buscar mais candidatas\" no "
-               "Pipeline, na barra lateral.")
+               "expander \"Buscar novas candidatas\", na barra lateral.")
     st.stop()
 
 revisados = int((todos["decisao"] != "pendente").sum())
