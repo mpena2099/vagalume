@@ -1206,6 +1206,17 @@ def campos_tela(telas, n):
     return {r: (v, c) for r, v, c, _ in telas[n]["campos"]}
 
 
+def test_preferencia():
+    import sqlite3
+    from app import dados
+    conn = sqlite3.connect(":memory:")
+    assert dados.ler_preferencia(conn, "descobridor", "") == ""
+    dados.gravar_preferencia(conn, "descobridor", " Maria S. Silva ")
+    assert dados.ler_preferencia(conn, "descobridor") == "Maria S. Silva"
+    dados.gravar_preferencia(conn, "descobridor", "Outro")
+    assert dados.ler_preferencia(conn, "descobridor") == "Outro"
+
+
 def test_telas_wizard():
     from app import vsx
     telas = vsx.telas_wizard(_ficha_tic64710105(), "EA", None, [], confirmado=True,

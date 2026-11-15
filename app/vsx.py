@@ -375,7 +375,7 @@ def telas_wizard(f: dict, tipo_final: str | None, outros: list[str] | None,
     telas.append({"tela": "Are there any supporting files to accompany this submission?",
                   "campos": arquivos})
 
-    nome = descobridor or "seu nome, como no cadastro do VSX"
+    nome = descobridor or "digite seu nome no campo abaixo"
     telas.append({"tela": "Who was the original discoverer of this variable object?", "campos": [
         campo("Discoverer", nome, bool(descobridor))]})
 

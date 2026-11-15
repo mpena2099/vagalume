@@ -33,6 +33,11 @@ def consultar(ra: float, dec: float) -> list[dict]:
     return vsx.consultar_vsx(ra, dec, raio_arcsec=vsx.RAIO_VSX_ARCSEC)
 
 
+def salvar_descobridor():
+    with conectar() as conn:
+        dados.gravar_preferencia(conn, "descobridor", st.session_state.get("descobridor", ""))
+
+
 def salvar_envio(tic: int, origem: str):
     enviada = bool(st.session_state.get(f"env_{tic}"))
     aceita = bool(st.session_state.get(f"ace_{tic}"))
@@ -433,8 +438,10 @@ with aba_enviar:
     except Exception:
         outros = None
         st.caption("O MAST não respondeu: os outros nomes ficaram só com o Gaia DR3.")
+    with conectar() as conn:
+        descobridor = dados.ler_preferencia(conn, "descobridor", DESCOBRIDOR)
     telas = vsx.telas_wizard(f, tipo_atual, outros, achados,
-                             confirmado=tipo_atual == tipo_salvo(tic), descobridor=DESCOBRIDOR)
+                             confirmado=tipo_atual == tipo_salvo(tic), descobridor=descobridor)
     for n, tela in enumerate(telas, 1):
         with st.container(border=True):
             st.markdown(f"**{n}. {tela['tela']}**")
@@ -446,6 +453,11 @@ with aba_enviar:
                     st.markdown(f"**{rotulo}:** {valor}")
                 if ajuda:
                     st.caption(ajuda)
+            if tela["tela"].startswith("Who was the original discoverer"):
+                st.text_input("Seu nome para o crédito (fica salvo neste computador)",
+                              value=descobridor, key="descobridor",
+                              placeholder="ex.: Maria S. Silva, sem acento, igual ao cadastro do VSX",
+                              on_change=salvar_descobridor)
             if tela["tela"].startswith("Are there any supporting files"):
                 st.markdown("**Anexos**")
                 c1, c2, c3 = st.columns(3)

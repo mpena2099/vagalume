@@ -372,6 +372,20 @@ def _garantir_envio(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE envio_vsx ADD COLUMN tipo_final TEXT")
 
 
+def ler_preferencia(conn: sqlite3.Connection, chave: str, padrao: str = "") -> str:
+    """Preferencia de quem usa o app (ex.: nome do descobridor), no banco local."""
+    conn.execute("CREATE TABLE IF NOT EXISTS preferencias (chave TEXT PRIMARY KEY, valor TEXT)")
+    linha = conn.execute("SELECT valor FROM preferencias WHERE chave = ?", (chave,)).fetchone()
+    return linha[0] if linha and linha[0] else padrao
+
+
+def gravar_preferencia(conn: sqlite3.Connection, chave: str, valor: str) -> None:
+    conn.execute("CREATE TABLE IF NOT EXISTS preferencias (chave TEXT PRIMARY KEY, valor TEXT)")
+    conn.execute("INSERT INTO preferencias (chave, valor) VALUES (?, ?) "
+                 "ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor", (chave, valor.strip()))
+    conn.commit()
+
+
 def ler_envios(conn: sqlite3.Connection) -> pd.DataFrame:
     _garantir_envio(conn)
     return pd.read_sql("SELECT tic, enviada_em, aceita_em, nome_vsx, tipo_final FROM envio_vsx",

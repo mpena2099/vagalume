@@ -7,11 +7,11 @@
 [![demo: online](https://img.shields.io/badge/demo-online-2e7d32.svg)](https://vagalume.streamlit.app)
 [![Discussões](https://img.shields.io/badge/chat-Discuss%C3%B5es-555.svg)](https://github.com/mpena2099/vagalume/discussions)
 
-Pipeline pessoal de mineração de dados astronômicos que procura **estrelas variáveis ainda não catalogadas** nas curvas de luz públicas do satélite **TESS** (NASA), descarta as já conhecidas e entrega candidatas prontas para submissão ao **VSX**, o catálogo internacional de estrelas variáveis da AAVSO.
+Pipeline de mineração de dados astronômicos que procura **estrelas variáveis ainda não catalogadas** nas curvas de luz públicas do satélite **TESS** (NASA), descarta as já conhecidas e entrega candidatas prontas para submissão ao **VSX**, o catálogo internacional de estrelas variáveis da AAVSO.
 
 Documentação completa: [mpena2099.github.io/vagalume](https://mpena2099.github.io/vagalume/)
 
-> **Situação:** a primeira candidata foi submetida ao VSX em novembro de 2026 e aguarda a moderação, que costuma levar semanas. As outras 3 confirmadas na revisão do primeiro campo (Cygnus, setor 55) esperam esse aceite, porque o VSX só aceita uma submissão de cada usuário novo até a primeira ser aprovada. Antes do envio, o pipeline confere sozinho o período entre setores, os eclipses pares e ímpares, a vizinha suspeita de blend e o VSX ao vivo; mesmo assim, trate cada resultado como candidata até o aceite.
+> **Situação da varredura do autor:** a primeira candidata foi submetida ao VSX em novembro de 2026 e aguarda a moderação, que costuma levar semanas. As outras 3 confirmadas na revisão do primeiro campo (Cygnus, setor 55) esperam esse aceite, porque o VSX só aceita uma submissão de cada usuário novo até a primeira ser aprovada. Antes do envio, o pipeline confere sozinho o período entre setores, os eclipses pares e ímpares, a vizinha suspeita de blend e o VSX ao vivo; mesmo assim, trate cada resultado como candidata até o aceite.
 
 ![Ilustração artística de uma binária eclipsante](docs/img/eso1311a.jpg)
 
@@ -60,6 +60,8 @@ Fases sequenciais que se comunicam por tabelas SQLite em `data/vagalume.db`. Cad
 O envio ao VSX é manual (não há API): veja o [passo a passo](#passo-a-passo). Tipo e período da ficha são sugestões; confira na curva em fase.
 
 ## Estado
+
+O estado do pipeline e os achados abaixo são da varredura feita pelo autor do projeto, como exemplo do que o Vagalume encontra; quem rodar o pipeline terá os próprios resultados no próprio `data/`.
 
 As oito fases estão implementadas (a 8, ficha do VSX, roda à mão depois da revisão). A Fase 1 redescobre WASP-18 b, uma binária eclipsante destacada e uma de contato, com o período dentro de 0,1% da referência. A primeira varredura, no setor 55 (Cygnus, plano da Via Láctea), processou 566 estrelas: 51 com sinal periódico, 19 sem variável catalogada a menos de 30" e 14 candidatas depois da checagem de vizinhas e da repetição em outros setores. Na revisão visual, 4 foram confirmadas, 3 ficaram em dúvida e 7 foram descartadas. Detalhes técnicos, cortes, catálogos e riscos em [`especificacao.md`](especificacao.md).
 

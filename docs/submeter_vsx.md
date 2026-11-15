@@ -101,7 +101,7 @@ Cada tela do Wizard tem a sua caixa na aba Enviar, na ordem do site, com o valor
 | Tipo espectral | Deixe vazio: o tipo espectral vem de um espectro, e a Teff do Gaia é estimada pela fotometria, não é tipo espectral medido. Preencha só se houver espectro publicado (SIMBAD, LAMOST) |
 | Período | "Período (d)" |
 | Época | "Época do mínimo (HJD, colar no VSX)": a página converte do BJD_TDB do TESS para HJD (a diferença é de cerca de um minuto) |
-| Discoverer | O nome do crédito de descoberta, `DESCOBRIDOR` em `config.py` (variável `VAGALUME_DESCOBRIDOR`), igual ao cadastro do VSX, sem acentos |
+| Discoverer | O seu nome, digitado no campo da tela 10 da aba Enviar e salvo no banco local (tabela `preferencias`), igual ao cadastro do VSX e sem acento. A variável `VAGALUME_DESCOBRIDOR` só serve de valor inicial |
 | Rise/eclipse duration | "Duração do eclipse (% do período)". Marque **Uncertain** em eclipse raso (amplitude abaixo de 0,05 mag), quando as bordas ficam no ruído |
 | Magnitude máxima | "Magnitude V (máxima)", na banda V |
 | Magnitude mínima | "Amplitude (mag, TESS)": marque **"Minimum is an amplitude"** e escolha **TESS** no menu de banda (se não houver, escreva `TESS` em **Custom min. passband**). Deixe os limitadores e o Uncertain em branco |

@@ -124,7 +124,7 @@ TREINO_DIR = ROOT / ("demo" if DEMO else "data") / "treino"
 VSX_DIR = ROOT / "data" / "vsx"
 
 # credito de descoberta no VSX, sem acento, igual ao cadastro
-DESCOBRIDOR = os.environ.get("VAGALUME_DESCOBRIDOR", "Mauricio O. Pena")
+DESCOBRIDOR = os.environ.get("VAGALUME_DESCOBRIDOR", "")
 
 # LLM com visao (tools/teste_llm_visao.py): formato OpenAI-compatible, como no Rastro.
 # Chave da env var abaixo, senao do auth.json do OpenCode (campo <provedor>.key).
