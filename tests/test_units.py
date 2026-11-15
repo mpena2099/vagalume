@@ -102,7 +102,8 @@ def test_vizier_so_lista():
 
 
 NOVAS_FICHA = {"oc_fases": "55 +0.000, 56 +0.001", "blend_veredito": "ok", "blend_motivo": "m",
-               "gaia_params_fonte": "sem", "motivo_provavel": "m"}
+               "gaia_params_fonte": "sem", "motivo_provavel": "m",
+               "par_impar_prof": "par 1.00% / ímpar 1.00%"}
 
 
 def test_ficha_vsx_retoma():
@@ -125,10 +126,13 @@ def test_ficha_vsx_retoma():
     sem_params = {k: v for k, v in NOVAS_FICHA.items() if k != "gaia_params_fonte"}
     assert fv.plano({**sem_params, "avisos": fv.AVISO_GAIA}) == "completar:gaia,params,tipo"
     assert fv.plano({**sem_params, "avisos": "", "gaia_dr3": 1}) == "completar:params,tipo"
-    assert fv.plano({"avisos": "", "gaia_dr3": 1}) == "completar:oc,blend,params,tipo"
+    assert fv.plano({"avisos": "", "gaia_dr3": 1}) == "completar:oc,parimpar,blend,params,tipo"
     assert fv.plano({**NOVAS_FICHA, "blend_motivo": fv.BLEND_SEM_CONSULTA + ": x"}
                     ) == "completar:blend"
     assert fv.plano({**NOVAS_FICHA, "avisos": "aviso desconhecido"}) == "nova"
+    antiga = {k: v for k, v in NOVAS_FICHA.items() if k != "par_impar_prof"}
+    assert fv.plano({**antiga, "avisos": ""}) == "completar:parimpar,tipo"
+    assert fv.plano({**antiga, "avisos": fv.AVISO_VIZIER}) == "completar:vizier,parimpar,tipo"
 
     # o CSV volta igual, inclusive o ID Gaia de 19 digitos e as colunas vazias
     tmp_path = Path(tempfile.mkdtemp())
@@ -978,6 +982,70 @@ def test_pendencias_blend_oc_tipo():
     assert not tem(vsx.pendencias(prov, "ROT", [], confirmado=False), "atencao", "Confirme")
     assert tem(vsx.pendencias(amb, None, []), "bloqueia", "Escolha o tipo")
     assert tem(vsx.pendencias(dict(amb, tipo_provavel=""), None, []), "bloqueia", "Escolha o tipo")
+
+
+def _eclipses(depths, n_ciclos=60, ruido=0.004, periodo=1.9939, dur=0.09, cad=10 / 1440, seed=1):
+    """Curva com eclipses de profundidade alternada `depths` (um por ciclo de `periodo`)."""
+    rng = np.random.default_rng(seed)
+    t = np.arange(0, n_ciclos * periodo, cad)
+    n = np.round(t / periodo).astype(int)
+    fase_d = (t - n * periodo)
+    prof = np.array(depths)[n % len(depths)]
+    f = 1 - prof * np.exp(-fase_d ** 2 / (2 * (dur / 2.355) ** 2))
+    return t, f + rng.normal(0, ruido, t.size)
+
+
+def test_par_impar():
+    from src.periodo_setores import largura_eclipse, par_impar_setores, teste_par_impar
+    # eclipses iguais: mantem P
+    t, f = _eclipses([0.012, 0.012])
+    larg = largura_eclipse(t, f, 1.9939, 0.0)
+    assert 0.02 < larg < 0.08  # FWHM 0,09 d = 0,045 em fase, medido na curva
+    assert largura_eclipse(*_eclipses([0.012, 0.012], dur=0.3), 1.9939, 0.0) > 2 * larg
+    r = teste_par_impar(t, f, 1.9939, 0.0)
+    assert r["decide"] and abs(r["sigma"]) < 3
+    # 1,2% x 1,0%: dobra, par mais fundo (epoca no fundo)
+    t, f = _eclipses([0.012, 0.010])
+    r = teste_par_impar(t, f, 1.9939, 0.0)
+    assert r["sigma"] > 3 and r["prof_par"] > r["prof_impar"]
+    assert abs(r["prof_par"] - 0.012) < 0.0015 and abs(r["prof_impar"] - 0.010) < 0.0015
+    # tres setores sinteticos (ruido 0,3%), mesmo sinal em todos
+    t, f = _eclipses([0.012, 0.010], n_ciclos=300, ruido=0.003)
+    cs = [(t[(t > a) & (t < a + 150)], f[(t > a) & (t < a + 150)]) for a in (0, 200, 400)]
+    res = par_impar_setores(cs, 1.9939, 0.0, [1, 2, 3])
+    assert res["dobrar"] and res["par_mais_fundo"] and res["consistente"]
+    # epoca no ciclo impar: o par (relativo a ela) fica mais raso
+    res = par_impar_setores(cs, 1.9939, 1.9939, [1, 2, 3])
+    assert res["dobrar"] and not res["par_mais_fundo"]
+    # poucos eclipses: sem decisao
+    t, f = _eclipses([0.012, 0.010], n_ciclos=4)
+    r = teste_par_impar(t, f, 1.9939, 0.0)
+    assert not r["decide"]
+    assert not par_impar_setores([(t, f)], 1.9939, 0.0)["dobrar"]
+    # sinais opostos entre setores: nao dobra
+    t, f = _eclipses([0.012, 0.010], n_ciclos=100, ruido=0.003)
+    t2, f2 = _eclipses([0.010, 0.012], n_ciclos=100, ruido=0.003, seed=2)
+    r = par_impar_setores([(t, f), (t2 + 150 * 1.9939, f2)], 1.9939, 0.0)
+    assert not r["consistente"] and not r["dobrar"]
+
+
+def test_par_impar_ficha_e_comentario():
+    from app import vsx
+    from src import ficha_vsx as fv
+    dobrada = _ficha(par_impar_dobrado=True, par_impar_sigma=4.1,
+                     par_impar_prof="par 0.87% / ímpar 1.04%")
+    p = vsx.pendencias(dobrada, "EA", [])
+    assert ("ok", "Período dobrado: eclipses pares e ímpares diferem 4.1 σ (par 0.87% / ímpar 1.04%)") in p
+    c = vsx.comentario(dobrada, "EA", [])
+    assert ("Odd/even eclipse depths differ (1.04% vs 0.87%), so the orbital period is 2x "
+            "the BLS period.") in c and "—" not in c
+    igual = _ficha(par_impar_dobrado=False, par_impar_sigma=0.8,
+                   par_impar_prof="par 1.00% / ímpar 1.00%")
+    assert any(t.startswith("Eclipses pares e ímpares iguais") for _, t in vsx.pendencias(igual, "EA", []))
+    assert "Odd/even" not in vsx.comentario(igual, "EA", [])
+    sem = _ficha(par_impar_prof="sem decisão: poucos eclipses")
+    assert any(n == "atencao" and "sem decisão" in t for n, t in vsx.pendencias(sem, "EA", []))
+    assert fv.formatar_par_impar({"geral": {"decide": False}}) == "sem decisão: poucos eclipses"
 
 
 def test_comentario_vsx():

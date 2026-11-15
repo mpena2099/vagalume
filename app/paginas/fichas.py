@@ -402,6 +402,11 @@ with aba_conferir:
             st.markdown("**O-C do mínimo por setor (em fase)**")
             st.write(f["oc_fases"] + (f"; máximo {f['oc_max_fase']:.3f}, limite 0,02"
                                       if "oc_max_fase" in f else ""))
+        if f.get("par_impar_prof"):
+            st.markdown("**Eclipses pares x ímpares**")
+            st.write(f["par_impar_prof"]
+                     + (f"; diferem {f['par_impar_sigma']:.1f} σ" if f.get("par_impar_sigma") == f.get("par_impar_sigma") and f.get("par_impar_sigma") is not None else "")
+                     + ("; período dobrado (2P)" if f.get("par_impar_dobrado") else ""))
         if f.get("alerta_periodo"):
             st.write(f["alerta_periodo"])
         st.markdown("**Achados no VSX**")

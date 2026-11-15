@@ -239,3 +239,121 @@ def oc_setores(curvas, periodo: float, eclipse: bool, rotulos=None, epoca=None) 
         saida.update(periodo_d=p_ref, periodo_erro_d=erro_p,
                      epoca=t0 + round((meio - t0) / p_ref) * p_ref)
     return saida
+
+
+PAR_IMPAR_SIGMA_MIN = 3.0
+PAR_IMPAR_MIN_PONTOS = 8
+PAR_IMPAR_MIN_ECLIPSES = 3
+PAR_IMPAR_BINS = 400
+
+
+def _fase_centrada(tempo, periodo: float, epoca: float) -> np.ndarray:
+    return ((np.asarray(tempo, dtype=float) - epoca) / periodo + 0.5) % 1 - 0.5
+
+
+def largura_eclipse(tempo, fluxo, periodo: float, epoca: float,
+                    n_bins: int = PAR_IMPAR_BINS) -> float:
+    """Largura total a meia profundidade (FWHM, em fase) do eclipse em fase 0 da curva dobrada.
+    Mediana por bin; a profundidade e medida contra a mediana da curva. NaN se nao houver eclipse
+    mensuravel."""
+    fluxo = np.asarray(fluxo, dtype=float)
+    cadencia = float(np.median(np.diff(np.sort(tempo)))) if len(tempo) > 1 else periodo
+    n_bins = int(max(20, min(n_bins, periodo / (2 * cadencia))))
+    fase = _fase_centrada(tempo, periodo, epoca)
+    idx = np.minimum(((fase + 0.5) * n_bins).astype(int), n_bins - 1)
+    med = np.full(n_bins, np.nan)
+    for k in np.unique(idx):
+        med[k] = np.median(fluxo[idx == k])
+    prof = np.nanmedian(med) - med
+    centro = n_bins // 2
+    janela = np.arange(centro - n_bins // 20, centro + n_bins // 20 + 1)
+    # suaviza 3 bins para o pico nao ser um ponto ruidoso
+    suave = np.convolve(np.nan_to_num(prof), np.ones(3) / 3, mode="same")
+    k0 = janela[int(np.argmax(suave[janela]))]
+    pico = suave[k0]
+    if not np.isfinite(pico) or pico <= 0:
+        return np.nan
+    metade = pico / 2
+    esq = k0
+    while esq > 0 and suave[esq - 1] >= metade:
+        esq -= 1
+    dir_ = k0
+    while dir_ < n_bins - 1 and suave[dir_ + 1] >= metade:
+        dir_ += 1
+    return float(max(dir_ - esq + 1, 1) / n_bins)
+
+
+def _mediana_erro(x) -> tuple[float, float]:
+    return float(np.median(x)), float(1.25 * 1.4826 * np.median(np.abs(x - np.median(x)))
+                                      / np.sqrt(len(x)))
+
+
+def teste_par_impar(tempo, fluxo, periodo: float, epoca: float,
+                    largura_fase: float | None = None) -> dict:
+    """Profundidade dos eclipses de ciclo par e de ciclo impar (n = round((t - epoca)/P)).
+
+    Dentro do eclipse: |fase| < largura_fase/4 (nucleo); fora: entre 1,5 e 3 larguras da fase 0,
+    limitado a 0,45. `largura_fase` (FWHM em fase) vem da propria curva se nao for dada.
+    Profundidade = mediana(fora) - mediana(dentro), por paridade; erro = 1,25*sigma/sqrt(n) da
+    mediana de cada lado, sigma pelo MAD. `sigma` = (par - impar)/erro combinado, com sinal.
+    Sem decisao (`decide` False) se algum lado tem menos de PAR_IMPAR_MIN_PONTOS pontos ou
+    PAR_IMPAR_MIN_ECLIPSES eclipses distintos."""
+    tempo = np.asarray(tempo, dtype=float)
+    fluxo = np.asarray(fluxo, dtype=float)
+    if largura_fase is None:
+        largura_fase = largura_eclipse(tempo, fluxo, periodo, epoca)
+    vazio = {"prof_par": np.nan, "prof_impar": np.nan, "erro_par": np.nan, "erro_impar": np.nan,
+             "sigma": np.nan, "n_par": 0, "n_impar": 0, "largura_fase": largura_fase,
+             "decide": False}
+    if not np.isfinite(largura_fase) or largura_fase <= 0:
+        return vazio
+    fase = _fase_centrada(tempo, periodo, epoca)
+    n = np.round((tempo - epoca) / periodo).astype(int)
+    af = np.abs(fase)
+    cadencia = float(np.median(np.diff(np.sort(tempo))))
+    dentro = af < max(largura_fase / 4, 0.75 * cadencia / periodo)
+    fora = (af > 1.5 * largura_fase) & (af < min(3 * largura_fase, 0.45))
+    saida = dict(vazio)
+    profs = {}
+    for nome, par in (("par", True), ("impar", False)):
+        sel = (n % 2 == 0) == par
+        d, o = fluxo[dentro & sel], fluxo[fora & sel]
+        saida[f"n_{nome}"] = int(d.size)
+        ciclos = np.unique(n[dentro & sel]).size
+        if (d.size < PAR_IMPAR_MIN_PONTOS or o.size < PAR_IMPAR_MIN_PONTOS
+                or ciclos < PAR_IMPAR_MIN_ECLIPSES):
+            return saida
+        md, ed = _mediana_erro(d)
+        mo, eo = _mediana_erro(o)
+        profs[nome] = (mo - md, float(np.hypot(ed, eo)))
+    if min(profs["par"][0], profs["impar"][0]) <= 0:
+        # a janela nao pega eclipse de verdade (epoca ou largura fora): sem decisao
+        return saida
+    saida.update(prof_par=profs["par"][0], prof_impar=profs["impar"][0],
+                 erro_par=profs["par"][1], erro_impar=profs["impar"][1], decide=True)
+    erro = float(np.hypot(profs["par"][1], profs["impar"][1]))
+    saida["sigma"] = float((profs["par"][0] - profs["impar"][0]) / erro) if erro > 0 else np.nan
+    return saida
+
+
+def par_impar_setores(curvas, periodo: float, epoca: float, rotulos=None) -> dict:
+    """Teste par/impar em cada setor (largura medida na curva juntada) e no conjunto.
+
+    `curvas`: lista de (tempo, fluxo) achatadas. `dobrar` = diferenca >= PAR_IMPAR_SIGMA_MIN sigmas
+    no conjunto, com o mesmo sinal em todo setor que decide (e pelo menos um setor decidindo).
+    `par_mais_fundo`: o par e o mais fundo (sigma > 0), para escolher a epoca do 2P."""
+    rotulos = list(rotulos) if rotulos is not None else list(range(len(curvas)))
+    tempo = np.concatenate([np.asarray(t, dtype=float) for t, _ in curvas])
+    fluxo = np.concatenate([np.asarray(f, dtype=float) for _, f in curvas])
+    largura = largura_eclipse(tempo, fluxo, periodo, epoca)
+    geral = teste_par_impar(tempo, fluxo, periodo, epoca, largura)
+    por_setor = {r: teste_par_impar(t, f, periodo, epoca, largura)
+                 for r, (t, f) in zip(rotulos, curvas)}
+    decididos = [v for v in por_setor.values() if v["decide"]]
+    sinais = {np.sign(v["sigma"]) for v in decididos if np.isfinite(v["sigma"])}
+    consistente = len(decididos) >= 1 and len(sinais) == 1
+    sigma = geral["sigma"]
+    dobrar = bool(geral["decide"] and np.isfinite(sigma) and abs(sigma) >= PAR_IMPAR_SIGMA_MIN
+                  and consistente)
+    return {"geral": geral, "setores": por_setor, "consistente": consistente, "dobrar": dobrar,
+            "par_mais_fundo": bool(sigma > 0) if np.isfinite(sigma) else True}

@@ -1,5 +1,7 @@
 """Pendencias e comentario da submissao: sem Streamlit, testavel offline."""
 
+import re
+
 from config import MARCA_PODE_SUBMETER
 from src.vsx_api import URL_API, URL_DETALHE, _distancia_arcsec, consultar_vsx  # noqa: F401
 
@@ -62,6 +64,19 @@ def pendencias(f: dict, tipo_final: str | None, vsx: list[dict] | None,
     else:
         itens.append(("ok", "Período consistente entre setores"))
 
+    sigma = f.get("par_impar_sigma")
+    sigma = None if sigma is None or sigma != sigma else float(sigma)
+    if f.get("par_impar_dobrado"):
+        itens.append(("ok", f"Período dobrado: eclipses pares e ímpares diferem "
+                            f"{sigma:.1f} σ ({f.get('par_impar_prof')})" if sigma is not None
+                      else "Período dobrado: eclipses pares e ímpares diferem"))
+    elif sigma is not None:
+        itens.append(("ok", "Eclipses pares e ímpares iguais" + f" ({sigma:.1f} σ)"))
+    elif str(f.get("par_impar_prof") or "").startswith("sem decisão"):
+        itens.append(("atencao", "Eclipses pares x ímpares sem decisão (poucos eclipses): "
+                                 "confira na curva em fase se os dois mínimos têm a mesma "
+                                 "profundidade"))
+
     veredito = f.get("blend_veredito")
     motivo = f.get("blend_motivo") or ""
     if veredito == "ok":
@@ -110,6 +125,13 @@ def comentario(f: dict, tipo_final: str | None, vsx: list[dict] | None) -> str:
         if "periodo_erro_d" in f:
             p += f" +- {f['periodo_erro_d']:.6f}"
         frases.append(p + " d.")
+    if f.get("par_impar_dobrado"):
+        fundos = sorted((float(x) for x in re.findall(r"(\d+(?:\.\d+)?)%",
+                                                       str(f.get("par_impar_prof") or ""))),
+                        reverse=True)
+        if len(fundos) == 2:
+            frases.append(f"Odd/even eclipse depths differ ({fundos[0]:.2f}% vs {fundos[1]:.2f}%), "
+                          "so the orbital period is 2x the BLS period.")
     if "epoca_bjd" in f:
         frases.append(f"Epoch of minimum: BJD {f['epoca_bjd']:.4f}.")
     if "amplitude_mag_tess" in f:

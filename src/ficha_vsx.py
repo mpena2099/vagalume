@@ -44,7 +44,8 @@ from config import (BLEND_AMP_MAX, BLS_FLATTEN_D, CATALOGOS_VARIAVEIS_ESPELHO, L
 from src.curvas import baixar_curva
 from src.detectar_sinal import _arrays, _flatten
 from src.checar_contaminacao import amp_necessaria
-from src.periodo_setores import medir_periodo_setores, oc_setores
+from src.periodo_setores import (medir_periodo_setores, oc_setores,
+                                 par_impar_setores)
 from src import util
 from src.util import retry
 
@@ -389,6 +390,7 @@ def _medir(s) -> dict:
             "suspeito_blend": bool(s.suspeito_blend), "figura_fase": str(figura),
             "figura_triagem": s.figura}
     _buscar_oc(ficha, s, brutas)
+    _buscar_parimpar(ficha, s, brutas)
     return ficha
 
 
@@ -398,7 +400,12 @@ def _buscar_oc(ficha: dict, s, brutas=None) -> None:
     eclipse = s.metodo == "bls" or ficha["tipo_sugerido"] in ("EA", "EB")
     janela = BLS_FLATTEN_D if eclipse else LS_FLATTEN_D
     curvas = [_arrays(_flatten(lc, janela)) for _, lc in brutas]
-    oc = oc_setores(curvas, ficha["periodo_d"], eclipse, [setor for setor, _ in brutas],
+    _oc_e_figura(ficha, s, curvas, [setor for setor, _ in brutas], eclipse)
+
+
+def _oc_e_figura(ficha: dict, s, curvas, rotulos, eclipse: bool) -> None:
+    """O-C com o periodo e a epoca da ficha; com os setores alinhados refaz amplitude e figura."""
+    oc = oc_setores(curvas, ficha["periodo_d"], eclipse, rotulos,
                     epoca=ficha["epoca_bjd"] - BTJD_PARA_BJD)
     aplicar_oc(ficha, oc)
     print(f"  O-C por setor (fase): {ficha['oc_fases']}"
@@ -410,6 +417,63 @@ def _buscar_oc(ficha: dict, s, brutas=None) -> None:
         ficha["amplitude_mag_tess"] = amplitude_dobrada_mag(tempo, fluxo, ficha["periodo_d"])
         _figura(int(s.tic), tempo, fluxo, ficha["periodo_d"], ficha["epoca_bjd"] - BTJD_PARA_BJD,
                 Path(ficha["figura_fase"]))
+
+
+def formatar_par_impar(r: dict) -> str:
+    g = r["geral"]
+    if not g["decide"]:
+        return "sem decisão: poucos eclipses"
+    return f"par {100 * g['prof_par']:.2f}% / ímpar {100 * g['prof_impar']:.2f}%"
+
+
+def _buscar_parimpar(ficha: dict, s, brutas=None) -> None:
+    """Teste de profundidade par x impar dos eclipses. Se diferem (>= 3 sigmas no conjunto e com o
+    mesmo sinal em cada setor), o periodo medido e a metade do orbital: a ficha passa a 2P, com a
+    epoca no minimo mais fundo, e O-C, amplitude e figura sao refeitos. Fora de eclipse, so grava
+    que nao se aplica."""
+    eclipse = s.metodo == "bls" or ficha["tipo_sugerido"] in ("EA", "EB")
+    ficha["par_impar_dobrado"] = False
+    if not eclipse:
+        ficha["par_impar_sigma"] = np.nan
+        ficha["par_impar_prof"] = "não se aplica: não é eclipse"
+        return
+    print("  testando eclipses pares x ímpares", flush=True)
+    brutas = brutas or _carregar_setores(s)
+    rotulos = [setor for setor, _ in brutas]
+    curvas = [_arrays(_flatten(lc, BLS_FLATTEN_D)) for _, lc in brutas]
+    p1 = ficha["periodo_d"]
+    epoca = ficha["epoca_bjd"] - BTJD_PARA_BJD
+    r = par_impar_setores(curvas, p1, epoca, rotulos)
+    g = r["geral"]
+    ficha["par_impar_sigma"] = abs(g["sigma"]) if np.isfinite(g["sigma"]) else np.nan
+    ficha["par_impar_prof"] = formatar_par_impar(r)
+    por_setor = ", ".join(f"{k} {v['sigma']:+.1f}" for k, v in r["setores"].items()
+                          if v["decide"])
+    print(f"  par/ímpar: {ficha['par_impar_prof']}; "
+          + ("sem decisão" if not g["decide"] else f"{abs(g['sigma']):.1f} sigmas (por setor: "
+                                                   f"{por_setor or 'nenhum decide'})")
+          + ("; DOBRA o período" if r["dobrar"] else ""), flush=True)
+    if not r["dobrar"]:
+        return
+    # fundo: o de paridade par ou o ímpar; a epoca fica no fundo, perto do meio dos dados
+    base = epoca if r["par_mais_fundo"] else epoca + p1
+    p2 = 2 * p1
+    tempo, fluxo = _juntar(curvas)
+    meio = (tempo.min() + tempo.max()) / 2
+    ficha["epoca_bjd"] = base + round((meio - base) / p2) * p2 + BTJD_PARA_BJD
+    ficha["periodo_d"] = p2
+    if np.isfinite(ficha.get("periodo_erro_d", np.nan)):
+        ficha["periodo_erro_d"] = 2 * ficha["periodo_erro_d"]
+    ficha["par_impar_dobrado"] = True
+    ficha["fase_secundario"] = 0.5
+    plano_ = fracao_variando(tempo, fluxo, p2) < 0.3
+    ficha["tipo_sugerido"] = "EA" if plano_ else "EB"
+    ficha["motivo_tipo"] = (
+        f"eclipses pares e ímpares de profundidades diferentes ({ficha['par_impar_prof']}, "
+        f"{abs(g['sigma']):.1f} sigmas): período orbital 2P = {p2:.5f} d; "
+        + ("eclipses estreitos e brilho plano entre eles" if plano
+           else "brilho varia o tempo todo entre os eclipses"))
+    _oc_e_figura(ficha, s, curvas, rotulos, True)
 
 
 def _buscar_gaia(ficha: dict, s) -> str | None:
@@ -556,10 +620,10 @@ def _buscar_tipo(ficha: dict, s) -> None:
 
 
 BUSCAS = {"gaia": _buscar_gaia, "vizier": _buscar_vizier, "oc": _buscar_oc,
-          "blend": _buscar_blend, "params": _buscar_params, "tipo": _buscar_tipo}
-ORDEM = ("gaia", "vizier", "oc", "blend", "params", "tipo")
+          "parimpar": _buscar_parimpar, "blend": _buscar_blend, "params": _buscar_params, "tipo": _buscar_tipo}
+ORDEM = ("gaia", "vizier", "oc", "parimpar", "blend", "params", "tipo")
 NOMES_BUSCA = {"gaia": "fonte Gaia DR3", "vizier": "busca no VizieR", "oc": "O-C dos setores",
-               "blend": "blend", "params": "Teff do Gaia DR3", "tipo": "tipo provável"}
+               "parimpar": "eclipses pares x ímpares", "blend": "blend", "params": "Teff do Gaia DR3", "tipo": "tipo provável"}
 
 
 def tipo_aviso(aviso: str) -> str | None:
@@ -600,6 +664,8 @@ def pendente(anterior: dict, busca: str) -> bool:
     """A busca local ou de rede nova ainda nao foi feita (ou ficou sem resposta) nesta ficha."""
     if busca == "oc":
         return "oc_fases" not in anterior
+    if busca == "parimpar":
+        return "par_impar_prof" not in anterior
     if busca == "blend":
         return ("blend_veredito" not in anterior
                 or str(anterior.get("blend_motivo", "")).startswith(BLEND_SEM_CONSULTA))
@@ -618,11 +684,11 @@ def plano(anterior: dict | None, refazer: bool = False) -> str:
         if tipo is None:
             return "nova"  # aviso que esta logica nao sabe completar
         faltas.add(tipo)
-    faltas |= {k for k in ("oc", "blend", "params") if pendente(anterior, k)}
+    faltas |= {k for k in ("oc", "parimpar", "blend", "params") if pendente(anterior, k)}
     if "gaia" in faltas and "gaia_params_fonte" not in anterior:
         faltas.add("params")  # a fonte Gaia vem agora; o Teff e dela
-    # o tipo provavel depende do periodo (oc) e do Teff (params)
-    if pendente(anterior, "tipo") or faltas & {"oc", "params"}:
+    # o tipo provavel depende do periodo (oc, parimpar) e do Teff (params)
+    if pendente(anterior, "tipo") or faltas & {"oc", "parimpar", "params"}:
         faltas.add("tipo")
     if not faltas:
         return "manter"
@@ -631,7 +697,7 @@ def plano(anterior: dict | None, refazer: bool = False) -> str:
 
 NUMERICAS = ["periodo_d", "periodo_erro_d", "fase_secundario", "epoca_bjd", "amplitude_mag_tess",
              "gaia_ra", "gaia_dec", "gaia_g", "v_estimada", "gaia_sep_arcsec", "oc_max_fase",
-             "gaia_teff", "gaia_logg", "gaia_raio"]
+             "gaia_teff", "gaia_logg", "gaia_raio", "par_impar_sigma"]
 
 
 def ler_fichas(caminho: Path) -> dict[int, dict]:
@@ -655,6 +721,8 @@ def ler_fichas(caminho: Path) -> dict[int, dict]:
                 f["gaia_dr3"] = int(float(f["gaia_dr3"])) if "e" in f["gaia_dr3"].lower() \
                     else int(f["gaia_dr3"])
             f["suspeito_blend"] = f.get("suspeito_blend", "False") == "True"
+            if "par_impar_dobrado" in f:
+                f["par_impar_dobrado"] = f["par_impar_dobrado"] == "True"
             f.setdefault("avisos", "")
             f.setdefault("vizier_variaveis", "")
         except (KeyError, ValueError):
@@ -681,6 +749,10 @@ def _markdown(f: dict) -> str:
     blend = (f"- Blend ({f['blend_veredito']}): {f['blend_motivo']}\n"
              if f.get("blend_veredito") else "")
     oc = f"- O-C do mínimo por setor, em fase: {f['oc_fases']}\n" if f.get("oc_fases") else ""
+    pi = (f"- Eclipses pares x ímpares: {f['par_impar_prof']}"
+          + (f" ({f['par_impar_sigma']:.1f} sigmas)" if pd.notna(f.get("par_impar_sigma")) else "")
+          + ("; período dobrado\n" if f.get("par_impar_dobrado") else "\n")
+          if f.get("par_impar_prof") else "")
     prov = (f"- Tipo provável: {f['tipo_provavel']} ({f['motivo_provavel']})\n"
             if f.get("tipo_provavel") else
             (f"- Tipo provável: nenhum ({f['motivo_provavel']})\n"
@@ -702,7 +774,7 @@ def _markdown(f: dict) -> str:
 - VizieR (catalogos de variaveis a 30"): {f['vizier_variaveis']}
 - Fonte Gaia escolhida a {num('gaia_sep_arcsec', '.1f')}" do TIC; suspeito_blend: {'sim' if f['suspeito_blend'] else 'nao'}
 - {ztf}
-{blend}{oc}{prov}"""
+{blend}{oc}{pi}{prov}"""
 
 
 def _gravar(fichas: list[dict]) -> Path:
