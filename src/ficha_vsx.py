@@ -46,7 +46,7 @@ from src.detectar_sinal import _arrays, _flatten
 from src.checar_contaminacao import amp_necessaria
 from src.periodo_setores import (duracao_eclipse, medir_periodo_setores, oc_setores,
                                  par_impar_setores)
-from src import util
+from src import triagem, util
 from src.util import retry
 
 BTJD_PARA_BJD = 2457000.0
@@ -393,6 +393,7 @@ def _medir(s) -> dict:
     _buscar_oc(ficha, s, brutas)
     _buscar_parimpar(ficha, s, brutas)
     _buscar_duracao(ficha, s, brutas)
+    _buscar_pixel(ficha, s, brutas)
     return ficha
 
 
@@ -492,6 +493,24 @@ def _buscar_duracao(ficha: dict, s, brutas=None) -> None:
     d = duracao_eclipse(tempo, fluxo, ficha["periodo_d"], ficha["epoca_bjd"] - BTJD_PARA_BJD)
     ficha["duracao_eclipse_pct"] = round(100 * d, 1) if np.isfinite(d) else "não se mediu"
     print(f"  duração do eclipse: {ficha['duracao_eclipse_pct']}", flush=True)
+
+
+def _buscar_pixel(ficha: dict, s, brutas=None) -> None:
+    """Figura em ingles com o periodo e a epoca finais, para o anexo publico do VSX. Falha de
+    rede (TESScut/VizieR) deixa as colunas ausentes e a proxima rodada tenta de novo."""
+    ficha.pop("figura_pixel", None)
+    ficha.pop("pixel_desloc_px", None)
+    print("  gerando o mapa por pixel em inglês", flush=True)
+    try:
+        r = triagem.figura_vsx(s, ficha["periodo_d"], ficha["epoca_bjd"],
+                               VSX_DIR / f"{int(s.tic)}_pixel.png", ficha.get("gaia_dr3"),
+                               ficha.get("amplitude_mag_tess"))
+    except Exception as e:
+        print(f"  TESScut/VizieR sem resposta ({type(e).__name__}); mapa por pixel fica para "
+              "depois", flush=True)
+        return
+    ficha["figura_pixel"] = r["figura"]
+    ficha["pixel_desloc_px"] = round(r["deslocamento_px"], 2)
 
 
 def _buscar_gaia(ficha: dict, s) -> str | None:
@@ -638,12 +657,13 @@ def _buscar_tipo(ficha: dict, s) -> None:
 
 
 BUSCAS = {"gaia": _buscar_gaia, "vizier": _buscar_vizier, "oc": _buscar_oc,
-          "parimpar": _buscar_parimpar, "duracao": _buscar_duracao, "blend": _buscar_blend,
-          "params": _buscar_params, "tipo": _buscar_tipo}
-ORDEM = ("gaia", "vizier", "oc", "parimpar", "duracao", "blend", "params", "tipo")
+          "parimpar": _buscar_parimpar, "duracao": _buscar_duracao, "pixel": _buscar_pixel,
+          "blend": _buscar_blend, "params": _buscar_params, "tipo": _buscar_tipo}
+ORDEM = ("gaia", "vizier", "oc", "parimpar", "duracao", "pixel", "blend", "params", "tipo")
 NOMES_BUSCA = {"gaia": "fonte Gaia DR3", "vizier": "busca no VizieR", "oc": "O-C dos setores",
                "parimpar": "eclipses pares x ímpares", "duracao": "duração do eclipse",
-               "blend": "blend", "params": "Teff do Gaia DR3", "tipo": "tipo provável"}
+               "pixel": "mapa por pixel em inglês", "blend": "blend",
+               "params": "Teff do Gaia DR3", "tipo": "tipo provável"}
 
 
 def tipo_aviso(aviso: str) -> str | None:
@@ -688,6 +708,8 @@ def pendente(anterior: dict, busca: str) -> bool:
         return "par_impar_prof" not in anterior
     if busca == "duracao":
         return "duracao_eclipse_pct" not in anterior
+    if busca == "pixel":
+        return "figura_pixel" not in anterior
     if busca == "blend":
         return ("blend_veredito" not in anterior
                 or str(anterior.get("blend_motivo", "")).startswith(BLEND_SEM_CONSULTA))
@@ -706,7 +728,7 @@ def plano(anterior: dict | None, refazer: bool = False) -> str:
         if tipo is None:
             return "nova"  # aviso que esta logica nao sabe completar
         faltas.add(tipo)
-    faltas |= {k for k in ("oc", "parimpar", "duracao", "blend", "params")
+    faltas |= {k for k in ("oc", "parimpar", "duracao", "pixel", "blend", "params")
                if pendente(anterior, k)}
     if "gaia" in faltas and "gaia_params_fonte" not in anterior:
         faltas.add("params")  # a fonte Gaia vem agora; o Teff e dela
@@ -720,7 +742,8 @@ def plano(anterior: dict | None, refazer: bool = False) -> str:
 
 NUMERICAS = ["periodo_d", "periodo_erro_d", "fase_secundario", "epoca_bjd", "amplitude_mag_tess",
              "gaia_ra", "gaia_dec", "gaia_g", "v_estimada", "gaia_sep_arcsec", "oc_max_fase",
-             "gaia_teff", "gaia_logg", "gaia_raio", "par_impar_sigma", "duracao_eclipse_pct"]
+             "gaia_teff", "gaia_logg", "gaia_raio", "par_impar_sigma", "duracao_eclipse_pct",
+             "pixel_desloc_px"]
 
 
 def ler_fichas(caminho: Path) -> dict[int, dict]:

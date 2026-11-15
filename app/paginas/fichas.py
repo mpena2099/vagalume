@@ -464,8 +464,14 @@ with aba_enviar:
                 with c1:
                     anexo("Baixar curva em fase", figura, f"TIC{tic}_fase.png", f"dl_fase_{tic}")
                 with c2:
-                    anexo("Baixar figura da triagem", triagem or Path("triagem"),
-                          f"TIC{tic}_triagem.png", f"dl_tri_{tic}")
+                    pixel = Path(f["figura_pixel"]) if f.get("figura_pixel") \
+                        else VSX_DIR / f"{tic}_pixel.png"
+                    if pixel.exists():
+                        anexo("Baixar mapa por pixel (inglês)", pixel,
+                              f"TIC{tic}_pixel.png", f"dl_pixel_{tic}")
+                    else:
+                        anexo("Baixar figura da triagem", triagem or Path("triagem"),
+                              f"TIC{tic}_triagem.png", f"dl_tri_{tic}")
                 with c3:
                     carta = VSX_DIR / f"{tic}_carta.png"
                     if carta.exists():

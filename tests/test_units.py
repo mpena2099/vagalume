@@ -103,7 +103,8 @@ def test_vizier_so_lista():
 
 NOVAS_FICHA = {"oc_fases": "55 +0.000, 56 +0.001", "blend_veredito": "ok", "blend_motivo": "m",
                "gaia_params_fonte": "sem", "motivo_provavel": "m", "duracao_eclipse_pct": 2.5,
-               "par_impar_prof": "par 1.00% / ímpar 1.00%"}
+               "par_impar_prof": "par 1.00% / ímpar 1.00%",
+               "figura_pixel": "data/vsx/1_pixel.png"}
 
 
 def test_ficha_vsx_retoma():
@@ -127,7 +128,7 @@ def test_ficha_vsx_retoma():
     assert fv.plano({**sem_params, "avisos": fv.AVISO_GAIA}) == "completar:gaia,params,tipo"
     assert fv.plano({**sem_params, "avisos": "", "gaia_dr3": 1}) == "completar:params,tipo"
     assert fv.plano({"avisos": "", "gaia_dr3": 1, "duracao_eclipse_pct": 2.5}
-                    ) == "completar:oc,parimpar,blend,params,tipo"
+                    ) == "completar:oc,parimpar,pixel,blend,params,tipo"
     assert fv.plano({**NOVAS_FICHA, "blend_motivo": fv.BLEND_SEM_CONSULTA + ": x"}
                     ) == "completar:blend"
     assert fv.plano({**NOVAS_FICHA, "avisos": "aviso desconhecido"}) == "nova"
@@ -137,6 +138,9 @@ def test_ficha_vsx_retoma():
     # ficha anterior sem a duracao do eclipse: so essa coluna e completada
     sem_duracao = {k: v for k, v in NOVAS_FICHA.items() if k != "duracao_eclipse_pct"}
     assert fv.plano({**sem_duracao, "avisos": ""}) == "completar:duracao"
+    # ficha anterior sem a figura em ingles: so a busca pixel e completada
+    sem_pixel = {k: v for k, v in NOVAS_FICHA.items() if k != "figura_pixel"}
+    assert fv.plano({**sem_pixel, "avisos": ""}) == "completar:pixel"
 
     # o CSV volta igual, inclusive o ID Gaia de 19 digitos e as colunas vazias
     tmp_path = Path(tempfile.mkdtemp())
@@ -382,6 +386,30 @@ def test_mapas_triagem():
     caixa = np.column_stack([-0.1 * (np.abs(fase * 3.0) < 0.05), np.zeros(TEMPO.size)])
     prof = profundidade_eclipse(TEMPO, caixa, 3.0, 0.5, 0.1)
     assert abs(prof[0] - 0.1) < 1e-9 and prof[1] == 0
+
+
+def test_figura_vsx_offline():
+    import types
+    from src import triagem
+
+    class WCS:
+        def world_to_pixel(self, coord):
+            forma = np.atleast_1d(coord.ra.deg).shape
+            return np.full(forma, 5.0), np.full(forma, 6.0)
+
+    tempo = np.linspace(0, 27, 400)
+    fluxo = 1 + 0.01 * np.sin(2 * np.pi * tempo / 2.0)
+    campo = np.ones((11, 11))
+    mapa = np.zeros((11, 11))
+    mapa[5, 6] = 0.1
+    gaia = pd.DataFrame({"RA_ICRS": [1.0, 1.001], "DE_ICRS": [2.0, 2.001],
+                         "Gmag": [12.0, 15.0]})
+    s = types.SimpleNamespace(tic=1, setor=55, periodo_d=2.0, amplitude=0.01, gaia_dr3=123)
+    with tempfile.TemporaryDirectory() as d:
+        saida = Path(d) / "1_pixel.png"
+        triagem._figura_vsx(s, tempo, fluxo, campo, mapa, WCS(), gaia, (5.0, 5.0), (5, 6),
+                            1.0, 2.0, 0.0, saida)
+        assert saida.exists() and 0 < saida.stat().st_size < 1_000_000
 
 
 def test_periodo_certo():
@@ -1247,6 +1275,19 @@ def test_telas_wizard():
     assert "sectors 41, 55, 56" in descricoes[0] and "1.04% and 0.87%" in descricoes[0]
     pixel = [v for _, v, _, _ in telas[8]["campos"] if v.startswith("Detection figure")]
     assert "0.7 px" in pixel[0]
+    assert ("Arquivo 2", "data/triagem/64710105.png", True) in [
+        (r, v, c) for r, v, c, _ in telas[8]["campos"]]
+    assert ("Mark as private", "marcado") in [(r, v) for r, v, *_ in telas[8]["campos"]]
+    com_pixel = _ficha_tic64710105(figura_pixel="data/vsx/64710105_pixel.png",
+                                   pixel_desloc_px=0.7)
+    tp = vsx.telas_wizard(com_pixel, "EA", None, [], confirmado=True, descobridor="X")
+    campos_px = tp[8]["campos"]
+    i = next(k for k, c in enumerate(campos_px) if c[0] == "Arquivo 2")
+    assert campos_px[i][1] == "data/vsx/64710105_pixel.png"
+    assert campos_px[i + 1] == ("Title", "TESS per-pixel signal map", True, "")
+    assert "TESS QLP sector 41, 55, 56" in campos_px[i + 2][1]
+    assert "P = 3.98776 d" in campos_px[i + 2][1] and "peaks 0.7 px" in campos_px[i + 2][1]
+    assert campos_px[i + 3][0] == "Mark as private" and campos_px[i + 3][1] == "desmarcado"
     assert campos(9)["Discoverer"][0] == "Mauricio O. Pena"
     amb = _ficha_tic64710105(tipo_sugerido="ROT, EW ou pulsante", tipo_provavel="EW")
     marcado = vsx.telas_wizard(amb, "EW", None, [], confirmado=False, descobridor="X")

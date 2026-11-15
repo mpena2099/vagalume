@@ -1,6 +1,7 @@
 import sqlite3
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -23,6 +24,7 @@ from src.detectar_sinal import _arrays, _flatten
 from src.util import com_prazo, retry
 
 PIXEL_ARCSEC = 21.0
+BTJD_PARA_BJD = 2457000.0
 
 
 def escolher_sinal(sinais: pd.DataFrame) -> pd.DataFrame:
@@ -164,6 +166,91 @@ def _figura(s, tempo, fluxo, campo, mapa, wcs, gaia, alvo_xy, pico, desloc, past
         fig.savefig(pasta / f"{nome}_{painel}.png", dpi=100, bbox_inches=bbox.padded(0.1))
     plt.close(fig)
     return caminho
+
+
+def _figura_vsx(s, tempo, fluxo, campo, mapa, wcs, gaia, alvo_xy, pico, desloc,
+                periodo: float, epoca: float, saida: Path, gaia_dr3=None,
+                amplitude_mag=None) -> Path:
+    """Figura em ingles para o anexo publico do VSX, com o periodo e a epoca finais da ficha."""
+    fig, ax = plt.subplots(2, 3, figsize=(16, 9))
+    fig.suptitle(f"TIC {int(s.tic)}  P = {periodo:.5f} d  (TESS QLP, 11x11 TESScut cutout, "
+                 f'21"/pixel)')
+
+    ax[0, 0].plot(tempo, fluxo, ".", ms=1, color="0.3")
+    ax[0, 0].set(xlabel="Time (BTJD, days)", ylabel="Normalized flux",
+                 title=f"Light curve (TESS QLP, sector {int(s.setor)}, detrended)")
+
+    # de -0,25 a 0,75: o minimo secundario (fase 0,5) fica inteiro no meio do painel
+    fase = ((tempo - epoca) / periodo + 0.25) % 1 - 0.25
+    ax[0, 1].plot(fase, fluxo, ".", ms=1, color="tab:orange", alpha=0.6)
+    bins = np.linspace(-0.25, 0.75, 201)
+    idx = np.digitize(fase, bins) - 1
+    med = [np.nanmedian(fluxo[idx == k]) if np.any(idx == k) else np.nan for k in range(200)]
+    ax[0, 1].plot((bins[:-1] + bins[1:]) / 2, med, "-", color="k", lw=1.2)
+    ax[0, 1].set(xlabel="Phase", ylabel="Normalized flux",
+                 title=f"Phase plot, P = {periodo:.5f} d")
+
+    freq = np.linspace(1 / PERIODO_MAX_D, 1 / PERIODO_MIN_D, 20000)
+    ax[0, 2].plot(1 / freq, LombScargle(tempo, fluxo).power(freq), lw=0.7)
+    ax[0, 2].axvline(periodo, color="tab:red", ls="--", lw=1)
+    deteccao = getattr(s, "periodo_d", None)
+    if deteccao and abs(deteccao / periodo - 0.5) < 0.05:
+        ax[0, 2].axvline(deteccao, color="tab:green", ls=":", lw=1)
+    ax[0, 2].set(xscale="log", xlabel="Period (d)", ylabel="LS power", title="Periodogram")
+
+    gaia_dr3 = gaia_dr3 or getattr(s, "gaia_dr3", None)
+    amp = (f"Amplitude (TESS band) = {amplitude_mag:.3f} mag" if amplitude_mag is not None
+           else f"Amplitude = {getattr(s, 'amplitude', np.nan) * 100:.2f} %")
+    linhas = [f"TIC {int(s.tic)}",
+              f"Gaia DR3 {int(gaia_dr3)}" if gaia_dr3 else "Gaia DR3: not available",
+              f"P = {periodo:.5f} d",
+              f"Epoch (BJD_TDB) = {epoca + BTJD_PARA_BJD:.4f}",
+              amp,
+              f'Peak offset = {desloc:.1f} px ({desloc * PIXEL_ARCSEC:.0f}")',
+              "",
+              "Symbols in the pixel panels:",
+              "  + target",
+              "  x signal peak",
+              "  o Gaia DR3 sources (G < target + 4.5)"]
+    ax[1, 0].axis("off")
+    ax[1, 0].text(0.02, 0.98, "\n".join(linhas), va="top", ha="left", fontsize=11,
+                  family="monospace")
+
+    ax[1, 1].imshow(np.log10(np.clip(campo, 1, None)), origin="lower", cmap="gray")
+    _marcar_campo(ax[1, 1], wcs, gaia, alvo_xy, pico)
+    ax[1, 1].set_title("TESS field (median flux)")
+    ax[1, 2].imshow(mapa, origin="lower", cmap="magma")
+    _marcar_campo(ax[1, 2], wcs, gaia, alvo_xy, pico)
+    ax[1, 2].set_title(f"Signal per pixel (peak {desloc:.1f} px from target)")
+
+    fig.tight_layout()
+    saida.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(saida, dpi=100, pil_kwargs={"compress_level": 9})
+    plt.close(fig)
+    return saida
+
+
+def figura_vsx(s, periodo_d: float, epoca_bjd: float, saida: Path, gaia_dr3=None,
+               amplitude_mag=None) -> dict:
+    """Anexo publico do VSX: a figura da triagem refeita em ingles com o periodo e a epoca finais.
+
+    O sinal `s` guarda o periodo da deteccao, que pode ser 2P ou P/2 do periodo da ficha; a
+    copia abaixo leva o periodo final para `_mapa_pixels` escolher o mapa certo.
+    """
+    epoca = epoca_bjd - BTJD_PARA_BJD
+    try:
+        s_final = s._replace(periodo_d=periodo_d)
+    except AttributeError:
+        s_final = SimpleNamespace(**{**vars(s), "periodo_d": periodo_d})
+    alvo = SkyCoord(s.ra, s.dec, unit="deg")
+    lc, _ = baixar_curva(int(s.tic), int(s.setor), s.autor)
+    tempo, fluxo = _arrays(_flatten(lc, LS_FLATTEN_D))
+    campo, mapa, wcs, alvo_xy, pico, desloc = _mapa_pixels(int(s.tic), int(s.setor), s_final,
+                                                          epoca, alvo)
+    gaia = _gaia_campo(alvo, s.tmag)
+    _figura_vsx(s, tempo, fluxo, campo, mapa, wcs, gaia, alvo_xy, pico, desloc, periodo_d,
+                epoca, saida, gaia_dr3, amplitude_mag)
+    return {"deslocamento_px": desloc, "figura": str(saida)}
 
 
 def _triar(s, pasta: Path = TRIAGEM_DIR, nome: str | None = None) -> dict:

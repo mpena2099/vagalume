@@ -352,12 +352,6 @@ def telas_wizard(f: dict, tipo_final: str | None, outros: list[str] | None,
         if len(fundos) == 2:
             desc1 += (f" Primary and secondary eclipses have different depths "
                       f"({fundos[0]:.2f}% and {fundos[1]:.2f}%).")
-    desc2 = ('Detection figure (TESS QLP): light curve, periodogram, phase plots at the '
-             'detection period and at twice it, and the per-pixel signal map (11x11 TESScut, '
-             '21"/px; red x = signal peak, green + = target).')
-    pico = re.search(r"pico no alvo \((\d+(?:\.\d+)?) px\)", str(f.get("blend_motivo") or ""))
-    if pico:
-        desc2 += f" The signal peaks {pico.group(1)} px from the target."
     arquivos = []
     if _num(f, "tic") is not None:
         arquivos.append(campo("Arquivo 1", f"data/vsx/{int(_num(f, 'tic'))}_fase.png", True))
@@ -365,13 +359,32 @@ def telas_wizard(f: dict, tipo_final: str | None, outros: list[str] | None,
                           else "TESS phase plot", True))
     arquivos.append(campo("Description", desc1, True))
     arquivos.append(campo("Mark as private", "desmarcado", False))
-    if f.get("figura_triagem"):
-        arquivos.append(campo("Arquivo 2", f["figura_triagem"], True))
-    arquivos += [campo("Title", "TESS pixel map and detection figure", True),
-                 campo("Description", desc2, True),
-                 campo("Mark as private", "marcado", False, "rótulos em português"),
-                 campo("Depois do upload", "Clique Next uma vez e espere o upload; não dá para "
-                                           "desfazer", False)]
+    if f.get("figura_pixel"):
+        d = _num(f, "pixel_desloc_px")
+        d = float("nan") if d is None else d
+        desc2 = (f'TESS QLP sector {setores} (11x11 TESScut, 21"/px): light curve, phase plot '
+                 f'at P = {periodo:.5f} d, periodogram and per-pixel signal amplitude. The signal '
+                 f'peaks {d:.1f} px from the target (red x = signal peak, green + = target), so '
+                 'the variation comes from the target.')
+        arquivos += [campo("Arquivo 2", f["figura_pixel"], True),
+                     campo("Title", "TESS per-pixel signal map", True),
+                     campo("Description", desc2, True),
+                     campo("Mark as private", "desmarcado", False)]
+    else:
+        desc2 = ('Detection figure (TESS QLP): light curve, periodogram, phase plots at the '
+                 'detection period and at twice it, and the per-pixel signal map (11x11 TESScut, '
+                 '21"/px; red x = signal peak, green + = target).')
+        pico = re.search(r"pico no alvo \((\d+(?:\.\d+)?) px\)",
+                         str(f.get("blend_motivo") or ""))
+        if pico:
+            desc2 += f" The signal peaks {pico.group(1)} px from the target."
+        if f.get("figura_triagem"):
+            arquivos.append(campo("Arquivo 2", f["figura_triagem"], True))
+        arquivos += [campo("Title", "TESS pixel map and detection figure", True),
+                     campo("Description", desc2, True),
+                     campo("Mark as private", "marcado", False, "rótulos em português")]
+    arquivos.append(campo("Depois do upload", "Clique Next uma vez e espere o upload; não dá para "
+                                              "desfazer", False))
     telas.append({"tela": "Are there any supporting files to accompany this submission?",
                   "campos": arquivos})
 
