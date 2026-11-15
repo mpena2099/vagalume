@@ -78,8 +78,9 @@ try:
         treino["figura"] = [str(ROOT / f) for f in treino["figura"]]
 except Exception:
     estilo.cabecalho("Treino", descricao=DESCRICAO)
-    st.info("A tabela `treino` ainda não existe. Crie o conjunto com:\n\n"
-            "```bash\npython -u tools/gerar_treino.py\n```")
+    st.info("Ainda não há casos de treino. Eles são criados no fim da primeira busca de candidatas "
+            "(página Revisão, **Buscar novas candidatas** na barra lateral). Enquanto isso, a "
+            "demo online tem o treino pronto: https://vagalume.streamlit.app")
     st.stop()
 
 if treino.empty:

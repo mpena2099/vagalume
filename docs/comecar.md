@@ -23,6 +23,8 @@ python iniciar.py               # revisão visual das candidatas (usa o venv soz
 python src/ficha_vsx.py         # Fase 8: fichas do VSX das confirmadas (--duvidas, --todas, --refazer)
 ```
 
+Sem terminal (Windows ou macOS): baixe o ZIP e clique duas vezes em `iniciar_vagalume.bat` (Windows) ou `iniciar_vagalume.command` (macOS); na primeira vez ele instala tudo sozinho. Passo a passo em [Instalar sem terminal](instalar.md).
+
 No Windows (PowerShell), crie e ative o ambiente assim; o resto dos comandos é igual:
 
 ```powershell

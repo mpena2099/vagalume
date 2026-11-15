@@ -60,11 +60,9 @@ try:
     with conectar() as conn:
         dados.descartar_automaticos(conn)  # idempotente; nunca toca em decisao existente
         todos = dados.carregar_candidatos(conn)
-except Exception as e:
-    estilo.cabecalho("Revisão", descricao=DESCRICAO)
-    st.error(f"Não consegui ler as candidatas em {SQLITE_PATH}: {e}\n\n"
-             "Rode `python pipeline.py` (ou as fases 2 a 7) antes de abrir o app.")
-    st.stop()
+except Exception:
+    # primeiro uso: o banco ainda nao tem as tabelas do pipeline; a busca abaixo as cria
+    todos = pd.DataFrame(columns=["decisao"])
 
 _pendentes = int((todos["decisao"] == "pendente").sum()) if not todos.empty else 0
 with st.sidebar.expander("Buscar novas candidatas", icon=":material/travel_explore:",
@@ -73,8 +71,11 @@ with st.sidebar.expander("Buscar novas candidatas", icon=":material/travel_explo
 
 if todos.empty:
     estilo.cabecalho("Revisão", descricao=DESCRICAO)
-    st.warning("A tabela candidatos_fase7 está vazia. Use \"Buscar mais candidatas\" no "
-               "expander \"Buscar novas candidatas\", na barra lateral.")
+    st.info("**Ainda não há candidatas.** Para a primeira busca, abra **Buscar novas "
+            "candidatas** na barra lateral e clique em **Buscar mais candidatas** (duas vezes, "
+            "para confirmar). Ela escolhe sozinha uma região do céu, baixa as curvas do TESS e "
+            "leva de 1 a 2 horas; pode fechar o navegador, ela continua. Quando terminar, as "
+            "candidatas aparecem aqui.")
     st.stop()
 
 revisados = int((todos["decisao"] != "pendente").sum())

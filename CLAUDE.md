@@ -21,6 +21,8 @@ python -c "from src.sanity_check import run; run()"   # uma fase isolada
 streamlit run app/revisao.py       # revisão visual das candidatas da Fase 7
 ```
 
+Sem terminal: `iniciar_vagalume.bat` (Windows) e `iniciar_vagalume.command` (macOS/Linux) criam o `venv`, instalam o `requirements.txt` na primeira vez (marca `venv/.instalado`) e rodam `iniciar.py`; guia em `docs/instalar.md`. Num banco novo, a Revisão mostra o primeiro uso (busca pela barra lateral) em vez de erro.
+
 `lightkurve` emite um `UserWarning` sobre `oktopus` ao importar. É inofensivo; use `-W ignore` para silenciar.
 
 **Fase 1 (`sanity_check`) é o teste de aceite.** Redescobre WASP-18 b, a binária eclipsante TIC 142979644 e a binária de contato TIC 121213501, e compara o período medido com a referência (tolerância 0,1%, aceitando harmônicos 0,5x e 2x). Se falhar, `sys.exit(1)`. Use-a para validar que o MAST está respondendo.

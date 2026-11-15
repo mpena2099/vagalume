@@ -34,6 +34,7 @@ markdown_extensions:
 
 nav:
   - Início: index.md
+  - Instalar sem terminal: instalar.md
   - Começar: comecar.md
   - Como funciona: como-funciona.md
   - Revisão e treino: revisao.md
