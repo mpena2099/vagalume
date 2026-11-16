@@ -1,6 +1,6 @@
 # Rascunhos de discussões
 
-Textos das [Discussões](https://github.com/mpena2099/vagalume/discussions). As quatro primeiras já estão publicadas; a da primeira submissão ao VSX espera a submissão. Uma seção por discussão, na ordem de publicação. A categoria vai na linha abaixo do título.
+Textos das [Discussões](https://github.com/mpena2099/vagalume/discussions). As quatro primeiras já estão publicadas; a da primeira submissão ao VSX será publicada depois do aceite da primeira estrela. Uma seção por discussão, na ordem de publicação. A categoria vai na linha abaixo do título.
 
 ## Treino: casos que pareceram ambíguos
 
@@ -40,11 +40,9 @@ Perguntas: qual catálogo você sente falta? Algum já te fez perder tempo com u
 
 Categoria: Show and tell
 
-Rascunho. Preencher depois da primeira submissão.
+A primeira candidata foi submetida em novembro de 2026. O relato sai depois da resposta do VSX.
 
 O que quero contar aqui: como foi criar a conta na AAVSO, o que o formulário pede além da ficha, quanto tempo o moderador levou, o que ele pediu para corrigir e como ficou o nome no catálogo.
-
-Lacunas: data do envio, número de estrelas, resposta do moderador, tempo até a aceitação.
 
 Até lá, o caminho está no README, no passo a passo. Se você já submeteu uma variável, conte como foi: a experiência de quem passou primeiro vale mais do que o guia.
 

@@ -26,8 +26,14 @@ class SemCurva(Exception):
 
 def _get(url: str, **params) -> httpx.Response | None:
     # CAs do sistema: o archive.stsci.edu nao valida com o bundle do certifi
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+        ctx.load_verify_locations(certifi.where())
+    except ImportError:
+        pass
     r = httpx.get(url, params=params or None, timeout=HTTP_TIMEOUT_S, follow_redirects=True,
-                  verify=ssl.create_default_context())
+                  verify=ctx)
     if r.status_code == 404:
         return None
     r.raise_for_status()

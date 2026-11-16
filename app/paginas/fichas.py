@@ -16,7 +16,7 @@ from config import DEMO, DESCOBRIDOR, MARCA_PODE_SUBMETER, SQLITE_PATH, VSX_DIR
 
 DESCRICAO = "Confira cada estrela confirmada, copie os campos no VSX e marque o envio."
 FILTROS = ["A enviar", "Todas", "Enviadas", "Aceitas"]
-GUIA_VSX = "https://github.com/mpena2099/vagalume/blob/main/docs/submeter_vsx.md"
+GUIA_VSX = "https://mpena2099.github.io/vagalume/submeter_vsx/"
 
 
 def conectar() -> sqlite3.Connection:
@@ -85,10 +85,6 @@ ICONES = {"ok": "✅", "atencao": "⚠️", "bloqueia": "❌"}
 
 estilo.cabecalho("Fichas do VSX", descricao=DESCRICAO)
 
-# o primeiro import do pipeline testa o CDS e leva alguns segundos
-with st.spinner("Carregando as fichas..."):
-    from src.ficha_vsx import ler_fichas
-
 try:
     with conectar() as conn:
         _cand = dados.carregar_candidatos(conn)
@@ -105,7 +101,12 @@ with st.expander("Login e envio no VSX"):
         "3. [Submit](https://vsx.aavso.org/index.php?view=submit.top), **New Star Wizard**. "
         f"Envie uma estrela por vez. Qual campo vai onde: [guia de submissão]({GUIA_VSX}).")
 caminho = VSX_DIR / "fichas.csv"
-fichas = ler_fichas(caminho)
+fichas = None
+if caminho.exists():
+    # o primeiro import do pipeline testa o CDS e leva alguns segundos
+    with st.spinner("Carregando as fichas..."):
+        from src.ficha_vsx import ler_fichas
+    fichas = ler_fichas(caminho)
 if not fichas:
     st.info("Nenhuma ficha ainda. Confirme candidatas na página **Revisão** e use **Gerar fichas "
             "do VSX** acima. Pelo terminal, na pasta do projeto, o mesmo comando é "

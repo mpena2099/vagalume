@@ -1,6 +1,6 @@
 # Contribuindo com o Vagalume
 
-Obrigado pelo interesse. O Vagalume é um projeto pessoal, então a revisão pode demorar. Issues e pull requests são bem-vindos. Dúvidas, ideias e conversa em geral vão para as [Discussões](https://github.com/mpena2099/vagalume/discussions).
+Obrigado pelo interesse. O Vagalume é mantido por uma pessoa só, então a revisão pode demorar. Issues e pull requests são bem-vindos. Dúvidas, ideias e conversa em geral vão para as [Discussões](https://github.com/mpena2099/vagalume/discussions).
 
 ## Boas contribuições
 

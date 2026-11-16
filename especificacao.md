@@ -1,6 +1,6 @@
 # Vagalume: especificação técnica
 
-Pipeline pessoal que procura estrelas variáveis ainda não catalogadas (binárias eclipsantes, pulsantes, rotacionais) nas curvas de luz públicas do TESS, descarta o que já é conhecido e entrega candidatos prontos para submissão ao VSX da AAVSO.
+Pipeline de mineração que procura estrelas variáveis ainda não catalogadas (binárias eclipsantes, pulsantes, rotacionais) nas curvas de luz públicas do TESS, descarta o que já é conhecido e entrega candidatos prontos para submissão ao VSX da AAVSO.
 
 O nome vem do inseto que pisca: o projeto procura estrelas que piscam e que ninguém anotou ainda.
 
@@ -61,16 +61,16 @@ Teste de aceite, como a Fase 1 do Rastro. Se falhar, `sys.exit(1)`.
 - Cortes iniciais:
   - `ALVO_TMAG_MIN = 9`, `ALVO_TMAG_MAX = 13.5` (estrelas mais brilhantes que T ~9 já foram muito estudadas; acima de 13,5 o QLP não cobre).
   - `contratio` do TIC < 0,2 (fração do fluxo vinda de vizinhas, já calculada pelo TIC).
-- Primeira rodada: limitar a `ALVO_MAX = 500` estrelas.
+- Primeira rodada: limitar a `ALVO_MAX = 600` estrelas, o que cobre o campo de 1° inteiro (cerca de 550 passam nos cortes de Tmag e contratio).
 
 Campo inicial sugerido: um setor que cruze o plano da Via Láctea. Há mais estrelas e menos atenção individual. O custo é mais contaminação, tratada na Fase 6.
 
 ## 6. Fase 3: baixar curvas
 
-- `lightkurve.search_lightcurve(tic, sector=..., author=...)`. Confirmar na primeira busca real qual string de `author` corresponde a TESS-SPOC FFI (aparece na coluna `author` do resultado).
-- Usar o fluxo corrigido (`KSPSAP_FLUX` no QLP, `PDCSAP_FLUX` no SPOC), remover pontos com `quality != 0`, normalizar.
-- Cache em disco (`data/curvas/<tic>_s<setor>.fits`) para não baixar duas vezes.
-- Retry com `time.sleep` nas chamadas ao MAST, como no Rastro.
+- `lightkurve.search_lightcurve(f"TIC {tic}", sector=..., author=...)` no MAST, com os autores de `config.AUTORES_PREFERIDOS` (`QLP`, `TESS-SPOC`, `SPOC`, nessa ordem; são as strings da coluna `author`). Com setor e `autor="QLP"`, o FITS vem direto do arquivo HLSP (`url_qlp` em `src/curvas.py`), sem passar pelo Portal do MAST.
+- Fluxo lido: a coluna `flux` do lightkurve (no QLP é o `sap_flux`), com máscara `quality == 0`, normalizado.
+- Cache em disco em `data/curvas/<tic>_s<setor>_<autor>.fits`, só com `time, flux, flux_err, cadenceno, quality`. Um FITS truncado no cache do lightkurve é apagado antes da nova tentativa.
+- Toda chamada de rede passa por `util.retry` (4 tentativas, esperas de 5, 10 e 20 s), com timeout de `HTTP_TIMEOUT_S` (120 s).
 
 ## 7. Fase 4: detectar sinal
 
@@ -106,7 +106,7 @@ Cone search de raio `RAIO_MATCH_ARCSEC = 30` (o pixel do TESS tem 21"; uma vari�
 | TOI (candidatos a planeta) | CSV do ExoFOP | Sinais já investigados pela missão TESS |
 | SIMBAD | `astroquery.simbad` | Literatura em geral |
 
-Os identificadores VizieR exatos das tabelas Gaia DR3 e ASAS-SN precisam ser confirmados na implementação.
+Os identificadores VizieR estão em `config.py` (ASAS-SN é `II/366`, em `CATALOGOS_VIZIER`) e na Fase 8 (Gaia DR3 é `I/355/gaiadr3`).
 
 Status gravado: `conhecido` (match com período compatível), `conhecido_vizinho` (match a mais de 10" mas dentro do raio), `novo`.
 
@@ -142,7 +142,7 @@ O moderador do VSX confere três coisas: o objeto está identificado corretament
 4. **Fonte certa no pixel:** o mapa por pixel da Fase 7 tem o pico no alvo, e não há vizinha Gaia brilhante capaz de gerar a amplitude (`suspeito_blend` falso). O fórum da AAVSO cita a contaminação por vizinhas como o principal cuidado com TESS. *(Fases 6 e 7)*
 5. **Ainda desconhecido, conferido de novo na véspera:** VSX, SIMBAD e VizieR em geral (não só os catálogos da Fase 5), incluindo ATLAS (ATO), Gaia DR3, ZTF, Pan-STARRS e CSS. Os moderadores avisam que VSX e SIMBAD sozinhos não garantem que o objeto é novo. Entrada marcada como "dubious" no ATO pode ser reivindicada. *(Fase 8 consulta o VizieR inteiro a 30" e lista os catálogos de variáveis; abrir cada um e ver se é a mesma estrela e o mesmo período. Com o VizieR de Estrasburgo fora do ar, o espelho do IDIA não faz a busca em todos os catálogos, e a Fase 8 consulta só os 25 catálogos de variáveis de `CATALOGOS_VARIAVEIS_ESPELHO`; a ficha avisa, e a busca completa é refeita quando o CDS volta)*
 6. **Identificação e posição** pela fonte Gaia DR3 correspondente (ID e coordenadas). *(Fase 8: fonte mais brilhante a até 3")*
-7. **Tipo de variável** pela nomenclatura do VSX (EA, EB, EW, ROT, DSCT, etc.; PDF de tipos no site do VSX). Tipo espectral não é obrigatório. *(Fase 8 sugere EA, EB ou "ROT, EW ou pulsante"; a palavra final é humana)*
+7. **Tipo de variável** pela nomenclatura do VSX (EA, EB, EW, ROT, DSCT, etc.; PDF de tipos no site do VSX). Tipo espectral não é obrigatório. *(Fase 8 sugere EA, EB ou "ROT, EW ou pulsante" pela forma da curva; com a Teff do Gaia, `tipo_provavel` pode ser DSCT, SPB, GDOR, ROT ou EW, ou nenhum, quando nenhuma regra serve ou duas valem juntas; a palavra final é humana)*
 8. **Período e época:** período em dias e instante de mínimo (eclipse) ou máximo (pulsante) em BJD; no TESS, BJD = BTJD + 2457000. *(Fase 8: período sugerido e época do mínimo)*
 9. **Faixa de magnitude:** magnitude média V de catálogo (derivada do Gaia DR3) no campo de máximo e a amplitude TESS no de mínimo, com "Minimum is an amplitude" marcado e "TESS" no campo de banda personalizada. Se a amplitude for grande o bastante para ZTF ou ASAS-SN, a AAVSO prefere combinar com esses dados e usar as magnitudes padrão deles. *(Fase 8: V pela relação G, BP-RP de Riello+2021 e amplitude pico a pico na curva dobrada em 200 bins, que não dilui eclipse estreito; avisa quando a amplitude passa de 0,05 mag)*
 10. **Evidência anexada:** curva em fase (obrigatória para variável periódica) e curva no tempo, feitas por você. O manual avisa que não basta apontar uma curva que qualquer um acha nos bancos de dados. *(Fase 8: curva em fase; Fase 7: figura completa)*
@@ -180,7 +180,6 @@ As figuras foram conferidas a olho e estão boas. Os erros são do modelo: uma s
 
 ## 14. Próximos passos
 
-1. Revisar no app as 9 candidatas do setor 55 (`streamlit run app/revisao.py`).
-2. Para as confirmadas, gerar as fichas (`python src/ficha_vsx.py`) e conferir cada item do checklist da seção 11.
-3. Criar a conta na AAVSO e submeter a primeira pelo New Star Wizard.
-4. Depois da primeira aceita, varrer outros setores (mudar `ALVO_SETOR` e o campo em `config.py`).
+1. Aguardar o aceite da primeira candidata, submetida ao VSX em novembro de 2026. As outras confirmadas esperam esse aceite: o VSX aceita uma submissão por usuário novo até a primeira ser aprovada.
+2. Varrer novos campos com `python -u pipeline.py --proximo` (ou o botão "Buscar mais candidatas" do app). O campo sai de `src/campos.py`; não é preciso editar `ALVO_SETOR`.
+3. Revisar as candidatas no app (`streamlit run app/revisao.py`) e, para as confirmadas, gerar as fichas (`python src/ficha_vsx.py`) e conferir cada item do checklist da seção 11.

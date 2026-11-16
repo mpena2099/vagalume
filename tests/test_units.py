@@ -1248,7 +1248,7 @@ def test_preferencia():
 def test_telas_wizard():
     from app import vsx
     telas = vsx.telas_wizard(_ficha_tic64710105(), "EA", None, [], confirmado=True,
-                             descobridor="Mauricio O. Pena")
+                             descobridor="Fulana de Tal")
     assert [t["tela"] for t in telas] == [
         "Submission method",
         "Do you want to submit a new variable star based on your observations only?",
@@ -1288,7 +1288,7 @@ def test_telas_wizard():
     assert "TESS QLP sector 41, 55, 56" in campos_px[i + 2][1]
     assert "P = 3.98776 d" in campos_px[i + 2][1] and "peaks 0.7 px" in campos_px[i + 2][1]
     assert campos_px[i + 3][0] == "Mark as private" and campos_px[i + 3][1] == "desmarcado"
-    assert campos(9)["Discoverer"][0] == "Mauricio O. Pena"
+    assert campos(9)["Discoverer"][0] == "Fulana de Tal"
     amb = _ficha_tic64710105(tipo_sugerido="ROT, EW ou pulsante", tipo_provavel="EW")
     marcado = vsx.telas_wizard(amb, "EW", None, [], confirmado=False, descobridor="X")
     assert dict((r, v) for r, v, *_ in marcado[4]["campos"])["Uncertain"] == "marcado"
@@ -1304,6 +1304,29 @@ def test_telas_wizard_sem_valores():
     assert len(telas) == 13
     assert "Maximum magnitude" not in [r for r, *_ in telas[6]["campos"]]
     assert dict((r, v) for r, v, *_ in telas[7]["campos"])["Rise/eclipse duration (%)"] == "vazio"
+
+
+def test_execucao_inicio_comando_e_script():
+    import tempfile
+    from app import execucao
+    log = Path(tempfile.mkdtemp()) / "x.log"
+    assert execucao.minutos_desde_inicio(log) is None
+    log.write_text("sem hora\n")
+    assert execucao.minutos_desde_inicio(log) is None
+    log.write_text(f"{execucao.INICIO} 1000\nExecutando: Fase 1\n")
+    assert abs(execucao.minutos_desde_inicio(log, agora=1000 + 600) - 10) < 1e-9
+    assert not execucao.estado(log.read_text())["erro"]
+    assert execucao.comando_exibido("pipeline.py --proximo", "win32") == \
+        "venv\\Scripts\\python -u pipeline.py --proximo"
+    assert execucao.comando_exibido("src/ficha_vsx.py", "win32") == \
+        "venv\\Scripts\\python -u src\\ficha_vsx.py"
+    assert execucao.comando_exibido("src/ficha_vsx.py", "linux") == \
+        "venv/bin/python -u src/ficha_vsx.py"
+    assert execucao.casa_script(["python", "-u", "pipeline.py"], "pipeline.py")
+    assert execucao.casa_script(["py", "C:\\x\\pipeline.py"], "pipeline.py")
+    assert execucao.casa_script(["py", "C:\\x\\src\\ficha_vsx.py"], "src/ficha_vsx.py")
+    assert not execucao.casa_script(["python", "outro_pipeline.py"], "pipeline.py")
+    assert not execucao.casa_script(["python", "ficha_vsx.py"], "src/ficha_vsx.py")
 
 
 if __name__ == "__main__":

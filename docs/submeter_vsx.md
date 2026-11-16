@@ -6,7 +6,7 @@ Faça uma estrela por vez. Pelas regras do VSX, usuário novo só pode ter **uma
 
 ## 1. Antes de abrir o formulário
 
-Na página **Fichas** do app, para a estrela escolhida (a página já confere o VSX sozinha pelas coordenadas, guarda o tipo que você escolher, gera o comentário em inglês e baixa os anexos)).
+Na página **Fichas** do app, para a estrela escolhida (a página já confere o VSX sozinha pelas coordenadas, guarda o tipo que você escolher, gera o comentário em inglês e baixa os anexos).
 
 A página dá o veredito: **"Pode enviar"**, com a lista do que foi conferido, ou **"Ainda não envie"**, com o próximo passo. Ela confere a ficha, o VSX ao vivo, os anexos e o limite de submissões do VSX (enquanto a primeira não for aceita, as outras ficam em "Aguardar o VSX"). Na tabela, "Pronta" quer dizer o mesmo que "Pode enviar", só sem a consulta ao VSX, que é feita ao abrir a estrela. Os itens abaixo explicam o que ela confere:
 
@@ -25,7 +25,7 @@ A Fase 6 faz uma conta para cada vizinha do Gaia a até 42" (dois pixels) com at
 
 É uma suspeita, e a Fase 8 a resolve sozinha com o deslocamento do pico do mapa por pixel (a distância do pico ao alvo, em pixels, que a triagem guarda) e a distância de cada vizinha suspeita (o Gaia dá a separação e a diferença de magnitude):
 
-- **Pico no pixel do alvo (a menos de 1 pixel) e vizinha suspeita a mais de 1 pixel (21"):** resolvido, a variação é da sua estrela. A ficha diz "pico no alvo; vizinha a N" não explica o sinal". Mencione a vizinha no comentário (a frase em inglês gerada pela página já faz isso).
+- **Pico no pixel do alvo (a menos de 1 pixel) e vizinha suspeita a mais de 1 pixel (21"):** resolvido, a variação é da sua estrela. A ficha diz "pico no alvo; vizinha a N segundos de arco não explica o sinal". Mencione a vizinha no comentário (a frase em inglês gerada pela página já faz isso).
 - **Pico deslocado de 1 pixel ou mais, a uma distância compatível com a de uma vizinha (diferença de até 1 pixel):** o sinal parece dela. A página bloqueia o envio. Não submeta.
 - **Vizinha a menos de 1 pixel do alvo, pico deslocado que não bate com nenhuma vizinha ou vizinhas que o Gaia não respondeu:** fica como atenção. O pixel não separa as duas estrelas, então olhe o mapa por pixel; se não der para distinguir, deixe a estrela para depois e comece pelas outras.
 

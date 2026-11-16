@@ -40,6 +40,10 @@ def run_all(campo: dict | None = None):
         except Exception as e:
             print(f"\nERRO em {nome}: {e}")
             sys.exit(1)
+        except SystemExit as e:
+            if e.code not in (0, None):
+                print(f"\nERRO em {nome}: encerrou com codigo {e.code}")
+            raise
 
     # so campo completo entra em campos_feitos: o que falhou volta na proxima rodada
     feito = campo or {"nome": f"inicial_s{ALVO_SETOR}", "setor": ALVO_SETOR,
@@ -56,6 +60,7 @@ if __name__ == "__main__":
                     help="escolhe sozinho o proximo campo do ceu ainda nao varrido")
     a = ap.parse_args()
     campo = None
+    SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
     if a.proximo:
         with sqlite3.connect(SQLITE_PATH) as con:
             feitos = campos.ler_feitos(con)

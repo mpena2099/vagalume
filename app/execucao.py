@@ -16,13 +16,33 @@ import psutil
 
 ROOT = Path(__file__).resolve().parent.parent
 LOG = ROOT / "data" / "pipeline.log"
-COMANDO = "python -u pipeline.py --proximo"
+INICIO = "Inicio:"
 FIM = "registrado em campos_feitos"
 CANCELADA = "Busca cancelada pelo app."
 
 FICHA_LOG = ROOT / "data" / "vsx" / "ficha.log"
-FICHA_COMANDO = "python -u src/ficha_vsx.py"
 CANCELADA_FICHA = "Fichas canceladas pelo app."
+
+
+def comando_exibido(script_e_args: str, plataforma: str | None = None) -> str:
+    """Comando para o terminal, com o python do venv conforme o sistema."""
+    win = (plataforma or sys.platform) == "win32"
+    py = "venv\\Scripts\\python" if win else "venv/bin/python"
+    return f"{py} -u {script_e_args.replace('/', chr(92)) if win else script_e_args}"
+
+
+COMANDO = comando_exibido("pipeline.py --proximo")
+FICHA_COMANDO = comando_exibido("src/ficha_vsx.py")
+
+
+def casa_script(cmd: list[str], script: str) -> bool:
+    """Algum argumento e o script (com / ou \\), nao outro arquivo que so termina igual."""
+    alvo = script.replace("\\", "/")
+    for p in cmd:
+        p = p.replace("\\", "/")
+        if p == alvo or p.endswith("/" + alvo):
+            return True
+    return False
 
 
 def _processos(script: str = "pipeline.py") -> list[int]:
@@ -35,7 +55,7 @@ def _processos(script: str = "pipeline.py") -> list[int]:
         try:
             cmd = proc.info["cmdline"] or []
             cwd = proc.info["cwd"]
-            if any(p.endswith(script) for p in cmd) and cwd and Path(cwd) == ROOT:
+            if casa_script(cmd, script) and cwd and Path(cwd) == ROOT:
                 achados.append(proc.pid)
         except (psutil.Error, OSError, ValueError):
             continue
@@ -53,13 +73,17 @@ def rodando_ficha() -> bool:
 def _sessao_propria() -> dict:
     """Processo desligado do Streamlit: parar o app nao interrompe a busca."""
     if sys.platform == "win32":
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        # DETACHED_PROCESS: fechar a janela do .bat nao mata o processo
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP
+                | getattr(subprocess, "DETACHED_PROCESS", 0)}
     return {"start_new_session": True}
 
 
 def _iniciar(script: str, argumentos: list[str], log: Path) -> None:
     log.parent.mkdir(parents=True, exist_ok=True)
     with open(log, "w", encoding="utf-8") as saida:
+        saida.write(f"{INICIO} {time.time():.0f}\n")
+        saida.flush()
         subprocess.Popen([sys.executable, "-u", script, *argumentos], cwd=ROOT,
                          stdout=saida, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                          env={**os.environ, "PYTHONIOENCODING": "utf-8"}, **_sessao_propria())
@@ -109,10 +133,14 @@ def ler_log_ficha() -> str:
     return ler_log(FICHA_LOG)
 
 
-def minutos_desde_inicio(log: Path = LOG) -> float | None:
+def minutos_desde_inicio(log: Path = LOG, agora: float | None = None) -> float | None:
+    """Minutos desde a hora gravada na primeira linha do log (st_ctime nao e a criacao)."""
+    primeira = ler_log(log).split("\n", 1)[0].strip()
+    if not primeira.startswith(INICIO):
+        return None
     try:
-        return (time.time() - log.stat().st_ctime) / 60
-    except OSError:
+        return ((agora or time.time()) - float(primeira[len(INICIO):])) / 60
+    except ValueError:
         return None
 
 
